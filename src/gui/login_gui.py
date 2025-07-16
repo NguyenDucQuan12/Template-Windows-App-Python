@@ -19,9 +19,10 @@ sys.path.append(PROJECT_DIR)
 
 # Các thư viện tự tạo import từ đây
 from utils.resource import resource_path
-from send_email.email_sender import InternalEmailSender
-from database.user_database import DucQuanApp_DB
-from database.hash import Hash
+from utils.send_mail import InternalEmailSender
+from services.database_service import My_Database
+from services.hash import Hash
+from utils.loading_gif import LoadingGifLabel
 
 
 CONFIG_FILE = 'db_config.json'
@@ -42,7 +43,7 @@ class LoginWindow(ctk.CTkToplevel):
 
         self.title("Đăng Nhập phần mềm")
         # Đối với cửa sổ toplevel thì cần thêm chút độ trễ cho đến khi cửa sổ tạo thành thì mới thay được icon
-        self.after(300, lambda: self.iconbitmap(resource_path("assets\\images\\ico\\Hr_app_logo.ico")))
+        self.after(300, lambda: self.iconbitmap(resource_path("assets\\images\\ico\\ico.ico")))
         # Đảm bảo rằng cửa sổ Toplevel đứng đầu và không thể thao tác các cửa sổ khác
         # self.grab_set()
         self.resizable(False, False)
@@ -54,7 +55,7 @@ class LoginWindow(ctk.CTkToplevel):
         # Gửi thư tự động
         self.email_sender = InternalEmailSender()
         # CSDL
-        self.database = DucQuanApp_DB()
+        self.database = My_Database()
         # Khởi tạo hàng đợi (queue) để nhận kết quả từ luồng
         self.result_queue = queue.Queue()
 
@@ -62,7 +63,7 @@ class LoginWindow(ctk.CTkToplevel):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         # Ảnh nền giao diện cửa sổ đăng nhập
-        bg_img = ctk.CTkImage(dark_image=Image.open(resource_path("assets\\login_img\\backgroud_login_dark.jpg")), size=(500, 500))
+        bg_img = ctk.CTkImage(dark_image=Image.open(resource_path("assets\\images\\background\\background_login_dark.jpg")), size=(500, 500))
         bg_lab = ctk.CTkLabel(self, image=bg_img, text="")
         bg_lab.grid(row=0, column=0)
 
@@ -150,7 +151,7 @@ class LoginWindow(ctk.CTkToplevel):
 
         # Tiêu đề và các trường nhập mật khẩu mới
         title = ctk.CTkLabel(self.forgot_password_frame, text="Thay đổi mật khẩu", text_color="black", font=("",25,"bold"))
-        title.grid(row=0, column=0, columnspan = 2, sticky="nw", pady=20, padx=10)
+        title.grid(row=0, column=0, columnspan = 2, sticky="nwes", pady=20, padx=10)
 
         self.email_account = ctk.CTkEntry(self.forgot_password_frame, text_color="white", placeholder_text="Email đã đăng ký", fg_color="black", placeholder_text_color="white",
                                       font=("", 16, "bold"), width=260, corner_radius=15, height=45)
@@ -199,7 +200,8 @@ class LoginWindow(ctk.CTkToplevel):
         """
         Nút bấm gửi mã OTP đến email người dùng
         """
-        logger.info("Sử dụng chức năng lấy mã OTP")
+        logger.debug("Sử dụng chức năng lấy mã OTP")
+        # Lấy email từ ô nhập
         email = self.email_account.get()
         # Kiểm tra địa chỉ email có hợp lệ hay không
         if not self.is_valid_email(email):
@@ -209,42 +211,46 @@ class LoginWindow(ctk.CTkToplevel):
         # Tạo ngẫu nhiên 1 OTP và cập nhật lên CSDL
         gen_OTP = self.generate_random_OTP()
 
-        # Tạo thời gian hết hạn của OTP
+        # Tạo thời gian hết hạn của OTP sau 10 phút
         current_time = datetime.now()
         expired_OTP_time = current_time + timedelta(minutes=10)
 
-        self.show_loading_popup_progress()
-        # Tạo luồng mới để cập nhật dữ liệu vào CSDL
+        # Tạo luồng mới để cập nhật thông tin OTP về CSDL
+        self.show_loading_popup()
         threading.Thread(target=self.get_OTP_for_reset_password_in_thread, args=(gen_OTP, expired_OTP_time, email ), daemon= True).start()
 
     def get_OTP_for_reset_password_in_thread(self, OTP, expired_OTP_time, email):
         """
-        Lưu mã OTP và CSDL và gửi nó đến email người dùng trong 1 luồng riêng
+        Lưu mã OTP vào CSDL và gửi nó đến email người dùng trong 1 luồng riêng
         """
         try:
             # Kiểm tra email đã tồn tại hay chưa
-            username = self.database.get_username(email= email)
-            if username is None:
+            check_mail_result = self.database.get_username(email= email)
+
+            # Nếu truy vấn thành công
+            if check_mail_result["success"]:
+                # Kiểm tra xem có tồn tại kết quả trả về không
+                if not check_mail_result["data"]:
+                    self.after(0, self.hide_loading_popup)
+                    self.after(0, lambda: messagebox.showinfo("Thông báo", f"Tài khoản {email} chưa được đăng ký trên CSDL."))
+                    return
+                
+            else:
                 self.after(0, self.hide_loading_popup)
-                self.after(0, lambda: messagebox.showinfo("Thông báo", f"Tài khoản {email} chưa được đăng ký trên CSDL."))
-                return
-            
-            elif username is False:
-                self.after(0, self.hide_loading_popup)
-                self.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"Không thể kết nối tới CSDL. \nVui lòng liên hệ bộ phận IT"))
+                self.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"Xảy ra lỗi: {check_mail_result["message"]}. \nVui lòng liên hệ bộ phận IT"))
                 return
 
             # Cập nhật mã OTP lên CSDL
-            result = self.database.update_OTP_and_time_expired(OTP= OTP, time_expired= expired_OTP_time, email= email)
-            if result:
+            update_otp_result = self.database.update_OTP_and_time_expired(OTP= OTP, time_expired= expired_OTP_time, email= email)
+            if update_otp_result["success"]:
                 # Gửi email có chứa mã OTP
-                self.email_sender.send_email_for_password_reset(to_email= email, name= username[0][0], website_name= self.software_name,
+                self.email_sender.send_email_for_password_reset(to_email= email, name= check_mail_result["data"][0][0], website_name= self.software_name,
                                                                  OTP= OTP, callback= self.callback_send_otp_to_user)
                 self.after(0, self.hide_loading_popup)
 
             else:
                 self.after(0, self.hide_loading_popup)
-                self.after(0, lambda: messagebox.showwarning("Lỗi OTP", "Không thể gửi mã OTP đến người dùng. \nHãy thử lại sau."))
+                self.after(0, lambda: messagebox.showwarning("Lỗi cập nhật OTP", f"{update_otp_result["message"]}. \nHãy thử lại sau."))
 
             # Ẩn nút getOTP và mở lại sau 30s
             self.after(0, lambda: self.get_OTP_button.configure(state = "disabled"))
@@ -252,7 +258,8 @@ class LoginWindow(ctk.CTkToplevel):
 
         except Exception as e:
             self.after(0, self.hide_loading_popup)
-            self.after(0, lambda: messagebox.showerror("Lỗi OTP", "Không thể gửi mã OTP đến người dùng. \nHãy thử lại sau."))
+            # Tham chiếu biến e vào biến err để sử dụng cho hàm after, vì biến e chỉ tồn tại trong phạm vi exception, còn after là ngoài exception rồi
+            self.after(0, lambda err=e: messagebox.showerror("Lỗi OTP", f"Xảy ra lỗi: {str(err)}. \nHãy thử lại sau."))
 
     def callback_send_otp_to_user(self, to_email, success):
         """
@@ -288,14 +295,15 @@ class LoginWindow(ctk.CTkToplevel):
         confirm_password = self.new_password_again.get()
 
         if password == '' or confirm_password == '':
-            messagebox.showwarning("Cảnh báo","Bạn chưa nhập đầy đủ thông tin cần thiết!")
+            messagebox.showwarning("Cảnh báo","Hãy nhập đầy đủ 2 trường thông tin mật khẩu.")
             return
         
         if password != confirm_password:
             messagebox.showwarning("Cảnh báo","Mật khẩu bạn nhập không trùng nhau, hãy kiểm tra lại!")
             return
+        
         # Mở một luồng mới kiểm tra OTP và cập nhật mật khẩu mới cho người dùng
-        self.show_loading_popup_progress()
+        self.show_loading_popup()
         # Tạo luồng mới để cập nhật dữ liệu vào CSDL
         threading.Thread(target=self.update_password_for_user_in_thread, args=(email, otp_code, password), daemon= True).start()
 
@@ -306,62 +314,62 @@ class LoginWindow(ctk.CTkToplevel):
         # Kiểm tra email đã tồn tại trong CSDL chưa, đã tồn tại thì mới tiến hành cập nhật mật khẩu
         check_user = self.database.get_username(email= email)
 
-        if check_user:
+        if check_user["success"]:
             try:
                 # Lấy mã OTP và thời gian hết hạn của nó
-                result = self.database.get_otp_and_expired_time(email= email)
+                get_otp = self.database.get_otp_and_expired_time(email= email)
 
-                if result is None:
-                    self.after(0, self.hide_loading_popup)
-                    self.after(0, lambda: messagebox.showwarning("Không có mã OTP", "Không tìm thấy mã OTP trên CSDL. Không thể cập nhật mật khẩu \nLiên hệ bộ phận IT để xử lý."))
-                    return
-                
-                if result:
-                    otp_server = result[0][0]
-                    expired_time_otp_server = result[0][1]
+                # Kiểm tra kết quả trả về
+                if get_otp["success"]:
 
-                    # So sánh mã OTP
-                    if otp_code != otp_server:
-                        self.after(0, self.hide_loading_popup)
-                        self.after(0, lambda: messagebox.showwarning("Mã OTP không khớp", "Mã OTP bạn nhập không đúng."))
-                        return
+                    if get_otp["data"]:
+                        otp_server = get_otp["data"][0][0]
+                        expired_time_otp_server = get_otp["data"][0][1]
+
+                        # So sánh mã OTP
+                        if otp_code != otp_server:
+                            self.after(0, self.hide_loading_popup)
+                            self.after(0, lambda: messagebox.showwarning("Mã OTP không khớp", "Mã OTP bạn nhập không đúng. Hãy thử lại sau 10 phút."))
+                            return
+                        
+                        # Kiểm tra xem mã OTP có hết hạn chưa
+                        current_time = datetime.now()
+                        if current_time > expired_time_otp_server:
+                            self.after(0, self.hide_loading_popup)
+                            self.after(0, lambda: messagebox.showwarning("Mã OTP hết hạn", "Mã OTP của bạn đã hết hạn. Hãy thử lại với mã OTP mới hơn."))
+                            return
+
+                        # Nếu OTP đúng và chưa hết hạn, tiến hành thay đổi mật khẩu
+                        confirm_change_pw = self.database.update_password_user(email=email, password=password)
+
+                        # Thông báo thành công
+                        if confirm_change_pw["success"]:
+                            self.after(0, self.hide_loading_popup)
+                            self.after(0, lambda: messagebox.showinfo("Thành công", "Mật khẩu của bạn đã được cập nhật thành công!"))   
+
+                        else:           
+                            self.after(0, self.hide_loading_popup)
+                            self.after(0, lambda: messagebox.showerror("Thất bại", f"{confirm_change_pw["message"]}, vui lòng thử lại."))              
                     
-                    # Kiểm tra xem mã OTP có hết hạn chưa
-                    current_time = datetime.now()
-                    if current_time > expired_time_otp_server:
+                    else:
                         self.after(0, self.hide_loading_popup)
-                        self.after(0, lambda: messagebox.showwarning("Mã OTP hết hạn", "Mã OTP của bạn đã hết hạn. Hãy thử lại với mã OTP mới hơn."))
+                        self.after(0, lambda: messagebox.showwarning("Không có mã OTP", f"{get_otp["message"]}. Không thể cập nhật mật khẩu \nLiên hệ bộ phận IT để xử lý."))
                         return
-
-                    # Nếu OTP đúng và chưa hết hạn, tiến hành thay đổi mật khẩu
-                    confirm_change_pw = self.database.update_password_user(email=email, password=password)
-
-                    # Thông báo thành công
-                    if confirm_change_pw:
-                        self.after(0, self.hide_loading_popup)
-                        self.after(0, lambda: messagebox.showinfo("Thành công", "Mật khẩu của bạn đã được cập nhật thành công!"))   
-
-                    else:           
-                        self.after(0, self.hide_loading_popup)
-                        self.after(0, lambda: messagebox.showerror("Thất bại", "Không thể cập nhật mật khẩu mới, vui lòng thử lại."))              
-                
-                else:
-                    self.after(0, self.hide_loading_popup)
-                    self.after(0, lambda: messagebox.showerror("Lỗi", "Mất kết nối tới CSDL. \n Liên hệ bộ phận IT để xử lý."))
-                    return
 
             except Exception as e:
-                self.after(0, self.hide_loading_popup)
-                messagebox.showerror("Lỗi đổi mật khẩu", "Máy chủ hiện tại đang lỗi! \nVui lòng thử lại sau")    
                 logger.error("Xảy ra lỗi trong quá trình cập nhật mật khẩu cho người dùng: %s", e)
+
+                self.after(0, self.hide_loading_popup)
+                # Tham chiếu biến e vào biến err để sử dụng cho hàm after, vì biến e chỉ tồn tại trong phạm vi exception, còn after là ngoài exception rồi
+                self.after(0, lambda err=e: messagebox.showerror("Lỗi đổi mật khẩu", f"Xảy ra lỗi: {str(err)}. \nHãy thử lại sau.")) 
 
         else:
             self.after(0, self.hide_loading_popup)
-            self.after(0, lambda: messagebox.showwarning("Người dùng không tồn tại", "Không tồn tại thông tin email trên CSDL."))
+            self.after(0, lambda: messagebox.showwarning("Không thể thay đổi mật khẩu", f"{check_user["message"]} \nVui lòng thử lại sau."))
     
     def generate_random_OTP(self):
         """
-        Tạo mật khẩu ngẫu nhiên bằng thư viện secrets và string
+        Tạo OTP (One Time Password) ngẫu nhiên bằng thư viện secrets và string
         """
         # Các ký tự được thêm cuối cùng
         symbols = ['*', '%', '£', '#', '$'] 
@@ -450,25 +458,32 @@ class LoginWindow(ctk.CTkToplevel):
             messagebox.showwarning("Cảnh báo","Mật khẩu bạn nhập không trùng nhau, hãy kiểm tra lại!")
             return
         
-        # Kiểm tra email đã tồn tại trong CSDL chưa
-        check_user = self.database.get_username(email= email)
-        if check_user != None:
-            messagebox.showwarning("Tài khoản đã tồn tại","Email này đã được sử dụng dể đăng ký tài khoản, vui lòng chọn email khác.")
-            return
         
         # Thêm thông tin người dùng mới vào CSDL
         try:
-            success = self.database.create_new_user(username= username, email= email, password= password)
-            if success is False:
-                messagebox.showerror("Lỗi", "Mất kết nối tới CSDL. \n Liên hệ nhà phát triển để xử lý.")
+            # Kiểm tra email đã tồn tại trong CSDL chưa
+            check_user = self.database.get_username(email= email)
+            # Kiểm tra kết quả trả về
+            if check_user["success"]:
+                if check_user["data"]:
+                    messagebox.showwarning("Tài khoản đã tồn tại","Email này đã được sử dụng dể đăng ký tài khoản, vui lòng chọn email khác.")
+                    return
+            else:
+                messagebox.showwarning("Xảy ra lỗi", f"Có lỗi xảy ra: {check_user["message"]} \nVui lòng thử lại sau.")
                 return
-            elif success:
-                # Gửi email thông báo đã tạo tài khoản thành công
+        
+            create_new_user_result = self.database.create_new_user(username= username, email= email, password= password)
+            if create_new_user_result["success"]:
+                 # Gửi email thông báo đã tạo tài khoản thành công
                 self.email_sender.send_email_for_new_account(to_email= email, name= username, website_name= self.software_name,
                                                             callback = self.email_callback)
                 return
+            else:
+                messagebox.showerror("Xảy ra lỗi khi tạo mới tài khoản", f"{create_new_user_result["message"]} \nLiên hệ nhà phát triển để xử lý.")
+                return
+
         except Exception as e:
-            messagebox.showerror("Lỗi tạo tài khoản", f"Không thể tạo tài khoản mới với lỗi: \n{e}")
+            self.after(0, lambda err=e: messagebox.showerror("Lỗi tạo tài khoản", f"Xảy ra lỗi: {str(err)}. \nHãy thử lại sau."))
 
     def back_to_login_frame(self):
         """
@@ -502,9 +517,6 @@ class LoginWindow(ctk.CTkToplevel):
         """
         Đăng nhập vào phần mềm
         """
-        # Hiển thì popup load khi tiến hành đăng nhập
-        # self.show_loading_popup_gif()
-        # self.center_window(window= self.loading_popup, width= 300, height= 300)
 
         # Lấy thông tin đăng nhập từ ô nhập
         email = self.email_login.get()
@@ -512,27 +524,23 @@ class LoginWindow(ctk.CTkToplevel):
 
         # Tài khoản test
         if email == 'test' and password == 'test':
-            # Đóng cửa sổ popup
-            # self.hide_loading_popup()
             logger.info("Đăng nhập thành công với tài khoản test")
             encoded_password = base64.b64encode(self.passwd_entry.get().encode('utf-8')).decode('utf-8')
             new_account = {"email": self.email_login.get(), "password": encoded_password}
             self.save_new_account_login(new_account= new_account)
 
-            # Đóng cửa sổ này và hiển thị cửa sổ chính bằng hàm on_success
+            # Đóng cửa sổ này và hiển thị cửa sổ chính bằng hàm on_success và truyền vào quyền truy cập là Admin
             self.destroy()
             self.on_success(permission = "Admin")
             return
             
         if email == '' or password == '':
-            # Đóng cửa sổ popup
-            # self.hide_loading_popup()
             messagebox.showwarning("Cảnh báo", "Bạn đang bỏ trống tên đăng nhập hoặc mật khẩu!")
             return
 
         # Tạo popup loading và đặt giữa chương trình
-        self.show_loading_popup_progress()
-        self.center_window(window= self.loading_popup)
+        self.show_loading_popup()
+
         # Tạo luồng mới để truy vấn CSDL để đăng nhập
         threading.Thread(target=self.query_database, args=(email, password), daemon= True).start()
     
@@ -542,40 +550,43 @@ class LoginWindow(ctk.CTkToplevel):
         """
         try:
             # Thực hiện truy vấn để lấy thông tin người dùng
-            result = self.database.get_password_salt_password_privilege_user(email=email)
+            get_information_login = self.database.get_password_salt_password_privilege_user(email=email)
 
-            # Đưa kết quả vào queue để lấy kết quả từ luồng chính
-            self.result_queue.put(result)
+            # Kiểm tra kết quả trả về
+            if get_information_login["success"]:
+                # Đưa kết quả vào queue để lấy kết quả từ luồng chính
+                self.result_queue.put(get_information_login["data"])
 
-            # Gọi hàm để xử lý kết quả trong luồng chính
-            self.after(0, self.process_login_result)
+                # Gọi hàm để xử lý kết quả trong luồng chính
+                self.after(0, self.process_login_result)
+            else:
+                # Đóng cửa sổ loading
+                self.hide_loading_popup()
+                # Nếu có lỗi xảy ra trong quá trình truy vấn, thông báo lỗi
+                self.after(0, messagebox.showerror("Lỗi đăng nhập", f"{get_information_login["message"]} \nVui lòng thử lại sau."))
 
         except Exception as e:
             # Hủy cửa sổ loading
             self.hide_loading_popup()
             # Nếu có lỗi xảy ra trong quá trình truy vấn, thông báo lỗi
-            self.after(0, messagebox.showerror("Lỗi", f"Đã xảy ra lỗi trong quá trình truy vấn dữ liệu"))
+            self.after(0, lambda err=e: messagebox.showerror("Lỗi đăng nhập", f"Xảy ra lỗi: {str(err)}. \nVui lòng thử lại sau."))
     
     def process_login_result(self):
         """
         Xử lý kết quả trả về từ truy vấn CSDL
         """
         # Lấy kết quả từ queue
-        result = self.result_queue.get()
+        data_login = self.result_queue.get()
 
         # Kiểm tra kết quả trả về từ CSDL
-        if result is None:
+        if not data_login:
             # Hủy cửa sổ loading
             self.hide_loading_popup()
             messagebox.showinfo("Thông báo", f"Tài khoản {self.email_login.get()} chưa được đăng ký trên CSDL.")
             return
-        elif result is False:
-            # Hủy cửa sổ loading
-            self.hide_loading_popup()
-            return
 
         # Kiểm tra xem tài khoản đã được kích hoạt chưa, hay vừa mới đăng ký
-        if result[0][2] is None:
+        if data_login[0][2] is None:
             # Hủy cửa sổ loading
             self.hide_loading_popup()
             # self.hide_loading_popup()
@@ -583,12 +594,12 @@ class LoginWindow(ctk.CTkToplevel):
             return
 
         # Kiểm tra mật khẩu từ CSDL
-        check_password = Hash.verify(stored_salt=result[0][1], stored_hashed_password=result[0][0], input_password=self.passwd_entry.get())
+        check_password = Hash.verify(stored_salt=data_login[0][1], stored_hashed_password=data_login[0][0], input_password=self.passwd_entry.get())
 
         if check_password:
             # Hủy cửa sổ loading
             self.hide_loading_popup()
-            logger.info("Đăng nhập thành công với tài khoản: %s cùng quyền truy cập: %s", self.email_login.get(), result[0][3])
+            logger.info("Đăng nhập thành công với tài khoản: %s cùng quyền truy cập: %s", self.email_login.get(), data_login[0][3])
 
             # Mã hóa mật khẩu trước khi lưu
             encoded_password = base64.b64encode(self.passwd_entry.get().encode('utf-8')).decode('utf-8')
@@ -596,7 +607,7 @@ class LoginWindow(ctk.CTkToplevel):
 
             self.save_new_account_login(new_account= new_account)
             self.destroy()
-            self.on_success(permission=result[0][3])
+            self.on_success(permission=data_login[0][3])
         else:
             # Hủy cửa sổ loading
             self.hide_loading_popup()
@@ -652,7 +663,7 @@ class LoginWindow(ctk.CTkToplevel):
 
         # print(f"Tài khoản {new_account['email']} đã được lưu vào tệp cấu hình.")
 
-    def show_loading_popup_progress(self):
+    def show_loading_popup(self):
         """
         Hiển thị popup với thanh tiến trình khi tải dữ liệu.
         """
@@ -687,7 +698,7 @@ class LoginWindow(ctk.CTkToplevel):
         resize_dimensions = (150,150)
         self.loading_label = LoadingGifLabel(self.loading_popup, resize=resize_dimensions)
         self.loading_label.pack(fill='both', expand=True, padx = 2, pady = 2)
-        self.loading_label.load(resource_path("assets\\loading\\loading_gif.gif"))
+        self.loading_label.load(resource_path("assets\\images\\loading\\loading_gif.gif"))
 
         # Khóa cửa sổ chính để chỉ có thể tương tác với cửa sổ con
         self.wm_attributes("-disabled", True)  
@@ -704,95 +715,6 @@ class LoginWindow(ctk.CTkToplevel):
                 self.loading_label.unload()
             # Destroy popup
             self.loading_popup.destroy() 
-    
-    def center_window(self, window):
-        """
-        Căn cửa sổ window vào giữa cửa sổ chính (self).
-        """
-        # Lấy tọa độ và kích thước của màn hình gốc
-        self.update()
-        x_main = self.winfo_x()
-        y_main = self.winfo_y()
-        width_main = self.winfo_width()
-        height_main = self.winfo_height()
-
-        # Lấy kích thước của màn hình loading
-        window.update()
-        width = window.winfo_width()
-        height = window.winfo_height()
-
-        x_rel = round((width_main - width)/2)
-        y_rel = round((height_main - height)/2)
-
-        x = x_rel + x_main
-        y = y_rel + y_main
-
-        # Cập nhật vị trí cửa sổ
-        window.geometry(f'{width}x{height}+{x}+{y}')
-class LoadingGifLabel(ctk.CTkLabel):
-    """
-    Label hiển thị ảnh gift với customtkinter
-    """
-    def __init__(self, master=None, background_color="#3cb371", resize=None, text = '', **kwargs):
-        super().__init__(master, **kwargs)
-        # self.background_color = background_color
-        self.configure(text = text,fg_color = background_color )
-        # self.configure(bg=background_color)
-        self.resize = resize  
-        self.frames = []  
-        self.loc = 0 
-        
-    def load(self, im):
-        """
-        Tải ảnh gif và hiển thị lên label theo vòng lặp
-        """
-        if isinstance(im, str):
-            """
-            Đọc các frame của ảnh gif từ đường dẫn được cung cấp img
-            """
-            im = Image.open(im)
-
-        # Prepare list to store frames
-        self.frames = []
-        try:
-            for i in count(1):
-                frame = im.copy()
-                # Sử dụng hình ảnh bằng ctkImage và đặt tham số kích thước, nếu không mặc định kích thước là (30,30)
-                if self.resize:
-                    ctk_img = ctk.CTkImage(frame, size=self.resize)
-
-                # Thêm các khung hình của GIF vào biến lưu trữ
-                self.frames.append(ctk_img)
-                im.seek(i)
-        except EOFError:
-            pass
-
-        try:
-            self.delay = im.info['duration']
-        except:
-            self.delay = 100
-
-        if len(self.frames) == 1:
-            self.config(image=self.frames[0])
-        else:
-            self.next_frame()
-
-    def unload(self):
-        """
-        Gọi hàm giải phóng tài nguyên gif trước khi kết thúc để đảm bảo ko lưu trữ các hình ảnh của gif
-        """
-        self.frames = [] 
-        self.loc = 0  
-
-    def next_frame(self):
-        """
-        Hiển thị khung hình tiếp theo trong ảnh GIF
-        """
-        if self.frames:
-            self.loc += 1
-            self.loc %= len(self.frames)
-            self.configure(image=self.frames[self.loc])
-            self.after(self.delay, self.next_frame)
 
 if __name__ == "__main__":
     app = ctk.CTk()
@@ -801,5 +723,8 @@ if __name__ == "__main__":
     def on_close():
         app.destroy()
 
-    LoginWindow(master=app, on_success= None, on_close= on_close)
+    def on_success(permission):
+        print(f"Đăng nhập thành công với quyền hạn: {permission}")
+
+    LoginWindow(master=app, on_success= on_success, on_close= on_close)
     app.mainloop()
