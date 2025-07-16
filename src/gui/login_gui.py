@@ -17,7 +17,8 @@ import os,sys
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJECT_DIR)
 
-from resource_path.resource_path import resource_path
+# Các thư viện tự tạo import từ đây
+from utils.resource import resource_path
 from send_email.email_sender import InternalEmailSender
 from database.user_database import DucQuanApp_DB
 from database.hash import Hash
@@ -41,7 +42,7 @@ class LoginWindow(ctk.CTkToplevel):
 
         self.title("Đăng Nhập phần mềm")
         # Đối với cửa sổ toplevel thì cần thêm chút độ trễ cho đến khi cửa sổ tạo thành thì mới thay được icon
-        self.after(300, lambda: self.iconbitmap(resource_path("assets\\ico\\Hr_app_logo.ico")))
+        self.after(300, lambda: self.iconbitmap(resource_path("assets\\images\\ico\\Hr_app_logo.ico")))
         # Đảm bảo rằng cửa sổ Toplevel đứng đầu và không thể thao tác các cửa sổ khác
         # self.grab_set()
         self.resizable(False, False)

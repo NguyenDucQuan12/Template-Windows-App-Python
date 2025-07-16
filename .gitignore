@@ -1,0 +1,24 @@
+# Bỏ qua thư mục ảo
+.venv_source/
+
+# Bỏ qua toàn bộ tệp thực thi exe
+*.exe
+
+# Bỏ qua tệp tin visual studio code
+.vscode/
+
+# Bỏ qua thư mục thực thi python
+__pycache__/
+
+# Bỏ qua thư mục output khi xuất exe
+output/
+
+
+
+
+# Nếu tệp tin đã đẩy lên git rồi thì dùng câu lệnh sau xóa nó khỏi cache trước khi thêm nó vào gitignore :
+
+# Cách 1 (xóa tệp tin cụ thể): git rm --cached filename.ext
+# Cách 2 (xóa folder): git rm -r --cached foldername/
+
+# Sau đó sửa lại gitignore và đẩy lên github

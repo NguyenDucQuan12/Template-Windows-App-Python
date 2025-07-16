@@ -11,3 +11,8 @@ Kích hoạt môi trường ảo:
 ```python
 .venv_source\Scripts\activate
 ```
+
+Cài đặt các thư viện cần thiết:  
+```python
+python -m pip install -r requirements.txt
+```
