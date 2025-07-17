@@ -726,6 +726,7 @@ if __name__ == "__main__":
 
     def on_success(permission):
         print(f"Đăng nhập thành công với quyền hạn: {permission}")
+        app.destroy()
 
     LoginWindow(master=app, on_success= on_success, on_close= on_close)
     app.mainloop()
