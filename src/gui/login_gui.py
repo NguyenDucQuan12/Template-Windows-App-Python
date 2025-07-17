@@ -2,7 +2,6 @@ import customtkinter as ctk
 from PIL import Image
 import threading
 import queue
-from itertools import count
 import re
 import string
 import secrets
@@ -23,9 +22,7 @@ from utils.send_mail import InternalEmailSender
 from services.database_service import My_Database
 from services.hash import Hash
 from utils.loading_gif import LoadingGifLabel
-
-
-CONFIG_FILE = 'db_config.json'
+from utils.constants import CONFIG_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +69,13 @@ class LoginWindow(ctk.CTkToplevel):
         # Lấy thông tin tài khoản đã lưu
         self.account = self.load_account_login()
         if self.account:
-            email, encrypted_password = self.account[0]["email"], self.account[0]["password"]
-            logger.info("Lấy thông tin đăng nhập user: %s", email)
+            encrypted_email, encrypted_password = self.account[0]["email"], self.account[0]["password"]
             # print(email, encrypted_password)
-            # Giải mã mật khẩu
+            # Giải mã mật khẩu và email
             password = base64.b64decode(encrypted_password.encode('utf-8')).decode('utf-8')
+            email = base64.b64decode(encrypted_email.encode('utf-8')).decode('utf-8')
+
+            logger.info("Lấy thông tin đăng nhập user: %s", email)
 
             self.email_login.insert(0, email)
             self.passwd_entry.insert(0, password)
@@ -526,7 +525,8 @@ class LoginWindow(ctk.CTkToplevel):
         if email == 'test' and password == 'test':
             logger.info("Đăng nhập thành công với tài khoản test")
             encoded_password = base64.b64encode(self.passwd_entry.get().encode('utf-8')).decode('utf-8')
-            new_account = {"email": self.email_login.get(), "password": encoded_password}
+            encoded_email = base64.b64encode(self.email_login.get().encode('utf-8')).decode('utf-8')
+            new_account = {"email": encoded_email, "password": encoded_password}
             self.save_new_account_login(new_account= new_account)
 
             # Đóng cửa sổ này và hiển thị cửa sổ chính bằng hàm on_success và truyền vào quyền truy cập là Admin
@@ -603,7 +603,8 @@ class LoginWindow(ctk.CTkToplevel):
 
             # Mã hóa mật khẩu trước khi lưu
             encoded_password = base64.b64encode(self.passwd_entry.get().encode('utf-8')).decode('utf-8')
-            new_account = {"email": self.email_login.get(), "password": encoded_password}
+            encoded_email = base64.b64encode(self.email_login.get().encode('utf-8')).decode('utf-8')
+            new_account = {"email": encoded_email, "password": encoded_password}
 
             self.save_new_account_login(new_account= new_account)
             self.destroy()
