@@ -1,0 +1,7 @@
+{
+    "Update_app": {
+        "server": "http://10.239.2.63:3838",
+        "app_name": "QLNS",
+        "current_version": "0.0.20"
+    }
+}
