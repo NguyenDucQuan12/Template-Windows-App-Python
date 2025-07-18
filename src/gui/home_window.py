@@ -69,10 +69,10 @@ class HomePage(customtkinter.CTkFrame):
         # set grid layout 1x2
         # self.grid_rowconfigure(0, weight=1)
         # self.grid_columnconfigure(1, weight=1)
-        # self.create_setting_register_frame(row= 0, column= 0, title= "Cấu hình chức năng gửi mail phê duyệt dữ liệu")
-        # self.create_setting_leave_day_frame(row= 1, column= 0, title= "Cấu hình chức năng thông báo chưa đủ ngày nghỉ")
-        # self.treeview_account = self.create_treeview_account_login_frame(row= 0, column= 1, rowspan = 2, title= "Thông tin tài khoản")
-        # self.create_setting_account_login_frame(row= 0, column= 2, rowspan = 2, title= "Cài đặt tài khoản")
+        self.create_setting_register_frame(row= 0, column= 0, title= "Cấu hình chức năng gửi mail phê duyệt dữ liệu")
+        self.create_setting_leave_day_frame(row= 1, column= 0, title= "Cấu hình chức năng thông báo chưa đủ ngày nghỉ")
+        self.treeview_account = self.create_treeview_account_login_frame(row= 0, column= 1, rowspan = 2, title= "Thông tin tài khoản")
+        self.create_setting_account_login_frame(row= 0, column= 2, rowspan = 2, title= "Cài đặt tài khoản")
 
     def create_setting_register_frame(self, row, column, title):
         """
