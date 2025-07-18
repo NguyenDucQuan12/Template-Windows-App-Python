@@ -84,8 +84,8 @@ def change_log_file_path(logger_root: logging, new_log_file_path = None):
         new_dir_log = os.path.join(appdata_dir, APP_FOLDER_LOG, "log", current_today)
 
         # Tạo 2 tệp chứa log và các câu lệnh print nếu tồn tại
-        new_log_file_path = new_dir_log +"/log.txt"
-        new_log_print_app = new_dir_log + "/system_out.txt"
+        new_log_file_path = new_dir_log +"/log.log"
+        new_log_print_app = new_dir_log + "/system_out.log"
     
     # Kiểm tra xem thư mục chứa log đã được tạo chưa, nếu chưa có thì mới thực hiện tạo và thay đổi log, nếu có thì bỏ qua
     if not os.path.exists(new_dir_log):
@@ -97,6 +97,7 @@ def change_log_file_path(logger_root: logging, new_log_file_path = None):
 
         # Kiểm tra và xóa các thư mục cũ đã tồn tại quá lâu
         delete_old_logs()
+        
         try:
             # Tao thư mục mới
             os.makedirs(new_dir_log)
