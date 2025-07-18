@@ -22,9 +22,12 @@ from utils.send_mail import InternalEmailSender
 from services.database_service import My_Database
 from services.hash import Hash
 from utils.loading_gif import LoadingGifLabel
-from utils.constants import CONFIG_FILE
+from utils.constants import FILE_PATH
 
 logger = logging.getLogger(__name__)
+
+# Đường dẫn đến tệp chứa thông tin đăng nhập
+CONFIG_FILE = FILE_PATH["LOGIN_CONFIG"]
 
 class LoginWindow(ctk.CTkToplevel):
 
