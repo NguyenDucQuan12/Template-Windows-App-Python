@@ -32,7 +32,8 @@ def get_odbc_drivers_for_sql_server():
     return odbc_drivers
 
 class My_Database:
-    def __init__(self, server_name="10.239.1.162", database_name="DB_QLNS_HR_APP", user_name="quannd", password="quannd"):
+    # def __init__(self, server_name="10.239.1.162", database_name="DB_QLNS_HR_APP", user_name="quannd", password="quannd"):
+    def __init__(self, server_name="172.31.99.130", database_name="DucQuanApp", user_name="ducquan_user", password="123456789"):
         """
         Khởi tạo đối tượng kết nối đến cơ sở dữ liệu với chuỗi kết nối.
         """
@@ -113,66 +114,50 @@ class My_Database:
         # Trả về kết quả cuối cùng
         return response
 
-# ------------------ Bảng User ------------------
-# Bởi vì User là 1 từ khóa đã định nghĩa nên cần cho nó vào ngoặc vuông để hiểu đó là tên bảng
+# ------------------ Bảng Users ------------------
+# Bởi vì User là 1 từ khóa đã định nghĩa nên cần cho nó vào ngoặc vuông để hiểu đó là tên bảng: FROM [User]
+# Đổi lại tên bảng là Users để tránh nhầm lẫn với từ khóa đã định nghĩa: FROM Users
+
+    def _check_user_exists(self, email):
+        """
+        Kiểm tra người dùng có tồn tại trong CSDL hay không.
+        """
+        query = "SELECT COUNT(*) FROM Users WHERE Email = ?"
+        params = (email,)
+        result = self._execute_query(query, params)
+        
+        return result["data"][0][0] > 0
 
     def get_information_all_user(self):
         """
         Truy vấn thông tin tất cả người dùng.
         """
-        query = "SELECT User_Name, Email, Activate, Privilege FROM [User]"
+        query = "SELECT User_Name, Email, Activate, Privilege FROM Users"
         result = self._execute_query(query)
 
         # Trả về kết quả rõ ràng
-        if result["success"]:
-            if not result["data"]:
-                logger.debug("Không tìm thấy thông tin người dùng trong CSDL.")
-                result["message"] = "Không tìm thấy thông tin người dùng."
-            else:
-                logger.debug("Truy vấn thông tin người dùng thành công.")
-        else:
-            logger.error(f"Lỗi khi truy vấn thông tin người dùng: {result.get('message', '')}")
-
         return result
 
     def get_username(self, email):
         """
         Lấy tên người dùng thông qua email
         """
-        query = "SELECT User_Name FROM [User] WHERE Email = ?"
+        query = "SELECT User_Name FROM Users WHERE Email = ?"
         params = (email,)
         result = self._execute_query(query, params)
 
         # Trả về kết quả rõ ràng
-        if result["success"]:
-            if not result["data"]:
-                logger.debug("Không tìm thấy thông tin người dùng trong CSDL.")
-                result["message"] = "Không tìm thấy thông tin người dùng."
-            else:
-                logger.debug("Truy vấn thông tin người dùng thành công.")
-        else:
-            logger.error(f"Lỗi khi truy vấn thông tin người dùng: {result.get('message', '')}")
-
         return result
     
     def get_password_salt_password_privilege_user(self, email):
         """
         Lấy mật khẩu, salt mã hóa và quyền hạn của người dùng
         """
-        query = "SELECT Password, Salt_Password, Activate, Privilege FROM [User] WHERE Email = ?"
+        query = "SELECT Password, Salt_Password, Activate, Privilege FROM Users WHERE Email = ?"
         params = (email,)
         result = self._execute_query(query, params)
 
         # Trả về kết quả rõ ràng
-        if result["success"]:
-            if not result["data"]:
-                logger.debug("Không tìm thấy thông tin đăng nhập của người dùng: %s", email)
-                result["message"] = f"Không tìm thấy thông tin đăng nhập của người dùng {email}."
-            else:
-                logger.debug(f"Truy vấn thông tin đăng nhập của người dùng {email} thành công.")
-        else:
-            logger.error(f"Lỗi khi truy vấn thông tin đăng nhập người dùng: {result.get('message', '')}")
-
         return result
     
     def get_otp_and_expired_time(self, email):
@@ -180,21 +165,12 @@ class My_Database:
         Lấy mã OTP và thời gian hết hạn của nó
         """
         get_otp_and_time_expired_query ="""
-            SELECT OTP, Expired_OTP FROM [User] WHERE Email = ?
+            SELECT OTP, Expired_OTP FROM Users WHERE Email = ?
             """
         params = (email,)
         result = self._execute_query(get_otp_and_time_expired_query, params)
 
         # Trả về kết quả rõ ràng
-        if result["success"]:
-            if not result["data"]:
-                logger.debug("Không tìm thấy thông tin mã OTP người dùng trong CSDL.")
-                result["message"] = "Không tìm thấy thông tin mã OTP người dùng."
-            else:
-                logger.debug("Truy vấn thông tin người dùng thành công.")
-        else:
-            logger.error(f"Lỗi khi truy vấn thông tin mã OTP người dùng: {result.get('message', '')}")
-
         return result
 
     def activate_user(self, email, activate=True):
@@ -212,29 +188,33 @@ class My_Database:
                 with conn.cursor() as cursor:
                     if activate:
                         activate_user_query = """
-                            UPDATE [User]
+                            UPDATE Users
                             SET Activate = GETDATE()
                             WHERE Email = ? 
                         """
                     else:
                         activate_user_query = """
-                            UPDATE [User]
+                            UPDATE Users
                             SET Activate = NULL
                             WHERE Email = ? 
                         """
                     params_update = (email,)
                     cursor.execute(activate_user_query, params_update)
                     conn.commit()
+
+                    # Kiểm tra xem có hàng nào được áp dụng không
                     if cursor.rowcount > 0:
                         response["success"] = True
-                        response["message"] = "Cập nhật trạng thái tài khoản thành công."
+                        response["message"] = "Kích hoạt/hủy kích hoạt tài khoản thành công."
                     else:
                         response["success"] = False
-                        response["message"] = "Không tìm thấy tài khoản hoặc không có dòng nào được cập nhật."
+                        response["message"] = "Không tìm thấy tài khoản hoặc không có tài khoản nào được kích hoạt."
+
             except Exception as e:
                 conn.rollback()
                 response["success"] = False
-                response["message"] = f"Lỗi khi cập nhật trạng thái tài khoản: {str(e)}"
+                response["message"] = f"Lỗi khi kích hoạt/hủy kích hoạt tài khoản: {str(e)}"
+
             finally:
                 conn.close()
         else:
@@ -257,7 +237,7 @@ class My_Database:
 
         # Bởi vì User là 1 từ khóa đã định nghĩa nên cần cho nó vào ngoặc vuông để hiểu đó là tên bảng
         query = """
-            INSERT INTO [User] (User_Name, Email, Password, Salt_Password, Privilege)
+            INSERT INTO Users (User_Name, Email, Password, Salt_Password, Privilege)
             VALUES (?, ?, ?, ?, ?)
         """
         params = (username, email, password_hashed, salt_password, privilege)
@@ -270,7 +250,7 @@ class My_Database:
 
                     if cursor.rowcount > 0:
                         response["success"] = True
-                        response["message"] = f"Tạo tài khoản người dùng mới thành công có địa chỉ: {email}"
+                        response["message"] = f"Tạo mới tài khoản người dùng thành công có địa chỉ: {email}"
                     else:
                         response["success"] = False
                         response["message"] = f"Không thể tạo mới tài khoản cho người dùng {email}"
@@ -309,7 +289,7 @@ class My_Database:
                 with conn.cursor() as cursor:
                     # Cập nhật mật khẩu người dùng
                     update_password_query = """
-                        UPDATE [User]
+                        UPDATE Users
                         SET Password = ?, Salt_Password = ?
                         WHERE Email = ? 
                     """
@@ -359,7 +339,7 @@ class My_Database:
                 with conn.cursor() as cursor:
                     # Cập nhật mã OTP và thời gian hết hạn của nó
                     update_OTP_query = """
-                        UPDATE [User]
+                        UPDATE Users
                         SET OTP = ?, Expired_OTP = ?
                         WHERE Email = ? 
                     """
@@ -404,7 +384,7 @@ class My_Database:
                 with conn.cursor() as cursor:
                     # Cập nhật mã OTP và thời gian hết hạn của nó
                     delete_account_query = """
-                        DELETE TOP(1) FROM [User]
+                        DELETE TOP(1) FROM Users
                         WHERE Email = ? 
                     """
                     params_update = (email)
@@ -438,7 +418,7 @@ class My_Database:
                 with conn.cursor() as cursor:
                     # Cập nhật mã OTP và thời gian hết hạn của nó
                     update_privilege_account_query = """
-                        UPDATE [User]
+                        UPDATE Users
                         SET Privilege = ?
                         WHERE Email = ?
                     """
