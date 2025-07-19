@@ -84,3 +84,27 @@ VALUE (
 
 > Lưu ý giá trị 2 trường `Password` và `Salt_Password` phải tuân thủ cách mã hóa ở [tệp mã hóa](src/services/hash.py).  
 
+Để có thể có quyền truy câp vào CSDL bằng tài khoản thì ta cần tạo tài khoản login, tọa người dùng và cấp quyền trong SQL Server:
+
+Bước 1: Tạo tài khoản login với với tên là `ducquan_user` và mật khẩu là `123456789`:  
+```SQL
+CREATE LOGIN ducquan_user WITH PASSWORD = '123456789'
+```
+Bước 2: Tạo người dùng trong CSDL `DucQuanApp` để tài khoản vừa tạo có thể truy cập CSDL `DucQuanApp`:  
+```SQL
+USE DucQuanApp
+CREATE USER ducquan_user FOR LOGIN ducquan_user
+```
+Bước 3: Cấp quyền truy cập cho người dùng để có thể thao tác với dữ liệu:  
+```SQL
+ALTER ROLE db_datareader ADD MEMBER ducquan_user  -- Cấp quyền đọc dữ liệu  
+ALTER ROLE db_datawriter ADD MEMBER ducquan_user -- cấp quyền ghi dữ liệu
+
+-- Cấp quyền quản trị CSDL (Cấp quyền truy cập đầy đủ)
+ALTER ROLE db_owner ADD MEMBER ducquan_user
+```
+Bước 4: Kiểm tra lại quyền truy cập bằng câu lệnh sau:  
+
+```SQL
+SELECT * FROM sys.database_principals WHERE name = 'ducquan_user'
+```
