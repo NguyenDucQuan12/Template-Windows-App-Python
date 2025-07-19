@@ -1,5 +1,5 @@
 > [!IMPORTANT]  
-> Yêu cầu phiên bản Python từ 3.12 trở lên
+> ## Yêu cầu phiên bản Python từ 3.12 trở lên
 
 
 # Tạo môi trường ảo
@@ -30,7 +30,7 @@ python -m pip install -r requirements.txt
 # Tạo CSDL
 
 > [!NOTE]  
-> ### Cài đặt driver ODBC cho từng thiết bị!  
+> ## Cài đặt driver ODBC cho từng thiết bị!  
 
 Đầu tiên ta cần tạo 1 CSDL trước có tên là `DucQuanApp`:  
 ```SQL
