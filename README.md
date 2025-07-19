@@ -39,7 +39,7 @@ CREATE DATABASE DucQuanApp
 ```
 ![image](assets/github/images/create_database.png)
 
-Sau khi tạo xong Database ta cần chuuyeern đến `DucQuanApp` thì mới có thể thực hiện thao tác đối với CSDL này:  
+Sau khi tạo xong Database ta cần chuyển đến `DucQuanApp` thì mới có thể thực hiện thao tác đối với CSDL này:  
 ```SQL
 -- Chuyển vào database DucQuanApp
 USE DucQuanApp
@@ -98,12 +98,14 @@ VALUE (
 
 > Lưu ý giá trị 2 trường `Password` và `Salt_Password` phải tuân thủ cách mã hóa ở [tệp mã hóa](src/services/hash.py).  
 
-Để có thể có quyền truy câp vào CSDL bằng tài khoản thì ta cần tạo tài khoản login, tọa người dùng và cấp quyền trong SQL Server:
+Để có thể có quyền truy cập vào CSDL bằng tài khoản thì ta cần tạo tài khoản login, tạo người dùng và cấp quyền trong SQL Server:
 
 Bước 1: Tạo tài khoản login với với tên là `ducquan_user` và mật khẩu là `123456789`:  
 ```SQL
 CREATE LOGIN ducquan_user WITH PASSWORD = '123456789'
 ```
+> [!NOTE]  
+> Đây chỉ là tài khoản để đăng nhập vào SQL Server, không thể truy cập Database.  
 
 ![image](assets/github/images/create_login_sql_server.png)
 
