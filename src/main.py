@@ -29,6 +29,7 @@ from gui.home_window import HomePage
 from utils.constants import *
 from utils.resource import resource_path
 from utils.logger import *
+from utils.check_running import check_if_running
 
 
 
@@ -104,6 +105,9 @@ class App(ctk.CTk):
         # # Kiểm tra cập nhật phần mềm từ server
         # self.get_information_from_server()
 
+        # Log thông tin khởi động ứng dụng
+        logger.info ("-------------------------- Bắt đầu phiên làm việc mới --------------------------")
+
         # Kiểm tra định kỳ tệp ghi log 1 tiếng, nếu qua ngày mới thì chuyển tệp log sang thư mục tương ứng
         self.check_log_expire = True
         self.check_new_log()
@@ -170,8 +174,13 @@ class App(ctk.CTk):
         Lấy thông tin phiên bản của chương trình cần được cập nhật từ phía server
         """
         if API_SERVER:
+            # Kiểm tra tên phần mềm trên server và phiên bản hiện tại có cùng là 1 không
+            if APP_NAME != APP_NAME_SYSTEM:
+                logger.error("Tên phần mềm trên server không khớp với tên phần mềm hiện tại: %s - %s", APP_NAME, APP_NAME_SYSTEM)
+                return
+            
             # Đường dẫn API để kiểm tra phiên bản hiện có trên server
-            LATEST_VERSION_ENDPOINT = API_SERVER + "/update/" + APP_NAME + "/latest-version"
+            LATEST_VERSION_ENDPOINT = API_SERVER + "/update/" + APP_NAME_SYSTEM + "/latest-version"
             # Tạo luồng mới để cập nhật dữ liệu vào CSDL
             threading.Thread(target=self.get_information_from_server_in_thread, args=(LATEST_VERSION_ENDPOINT,)).start()
         else:
@@ -397,7 +406,6 @@ class App(ctk.CTk):
         """
         Nếu đăng nhập thành công thì mở lại giao diện chính và phân quyền truy cập các frame.
         """
-        logger.info ("-------------------- Bắt đầu phiên làm việc mới --------------------------")
         self.deiconify()
         self.permission = permission
 
@@ -433,6 +441,20 @@ class App(ctk.CTk):
         """
         self.destroy()
 
+def run_app():
+    exe_name = f"{APP_NAME_SYSTEM}.exe"  # Thay đổi thành tên tệp .exe của bạn
+
+    # Kiểm tra xem phần mềm đã được mở chưa
+    if check_if_running(exe_name):
+        logger.warning("Ứng dụng đã được mở trước đó.")
+        sys.exit()  # Thoát nếu ứng dụng đã chạy
+    else:
+        # Tiến hành mở giao diện phần mềm
+        app = App()
 # Ví dụ chạy thử:
 if __name__ == "__main__":
-    app = App()
+    # Kiểm tra xem ứng dụng đã chạy chưa, nếu đã chạy thì không mở lại
+    run_app()
+
+    # Khởi động phần mềm mà không cần kiểm tra lại
+    # app = App()
