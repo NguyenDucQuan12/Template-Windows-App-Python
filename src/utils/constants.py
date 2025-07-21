@@ -36,3 +36,9 @@ IMAGE = {
     "CHAT_NAVIGATION_LIGHT_IMG": "assets\\images\\navigation\\chat_light.png",
     "CHAT_NAVIGATION_DARK_IMG": "assets\\images\\navigation\\chat_dark.png",
 }
+
+
+# Danh sách các cột trong bảng người dùng
+ACCOUNT_TABLE_COLUMN_LIST = [
+    "Người dùng", "Tài khoản", "Ngày kích hoạt", "Quyền hạn"
+]
