@@ -18,6 +18,7 @@ sys.path.append(PROJECT_DIR)
 from services.database_service import My_Database
 
 from utils.constants import *
+from utils.loading_gif import LoadingGifLabel
 from utils.resource import resource_path
 from utils.send_mail import InternalEmailSender
 
@@ -40,23 +41,15 @@ class HomePage(customtkinter.CTkFrame):
 
         # set grid layout 1x2
         # self.grid_rowconfigure(0, weight=1)
-        self.grid_columnconfigure((1,2), weight=1)
+        self.grid_columnconfigure(0, weight=1)
 
         # Khởi tạo lớp gửi email và kết nối đến CSDL
         self.email_sender = InternalEmailSender()
         self.db = My_Database() 
 
         # Khởi tạo hàng đợi (queue) để nhận kết quả từ luồng thực thi khác
-        self.data_information_for_register_frame = queue.Queue()
-        self.data_register_infor_queue= queue.Queue()
-        self.data_schedule_queue= queue.Queue()
         self.data_user_queue= queue.Queue()
 
-        # Cờ chứa giá trị để tiếp tục truy vấn lịch gửi mail sau 10 phút
-        self.continue_query = True
-        # cờ cho quá trình lập lịch
-        self.schedule_send_mail_to_register_flag = False
-        self.schedule_send_mail_leave_day_flag = False
         # Đếm số lần thử lại
         self.count_retry = 1
 
@@ -69,74 +62,20 @@ class HomePage(customtkinter.CTkFrame):
         # set grid layout 1x2
         # self.grid_rowconfigure(0, weight=1)
         # self.grid_columnconfigure(1, weight=1)
-        self.create_setting_register_frame(row= 0, column= 0, title= "Cấu hình chức năng gửi mail phê duyệt dữ liệu")
-        self.create_setting_leave_day_frame(row= 1, column= 0, title= "Cấu hình chức năng thông báo chưa đủ ngày nghỉ")
         self.treeview_account = self.create_treeview_account_login_frame(row= 0, column= 1, rowspan = 2, title= "Thông tin tài khoản")
         self.create_setting_account_login_frame(row= 0, column= 2, rowspan = 2, title= "Cài đặt tài khoản")
 
-    def create_setting_register_frame(self, row, column, title):
-        """
-        Tạo frame cấu hình chức năng cho nhắc nhở phê duyệt dữ liệu
-        """
-        frame_configure = customtkinter.CTkFrame(self)
-        frame_configure.grid(row = row, column = column, padx = 5, pady = 6, sticky = "nsew")
-
-        title = customtkinter.CTkLabel(master= frame_configure, text= title, anchor="center", bg_color= "transparent")
-        title.grid(row = 0, column = 0, padx = 5, columnspan = 2)
-
-        title_from_mail = customtkinter.CTkLabel(master= frame_configure, text= "Mail gửi thư: ", anchor="center", bg_color= "transparent")
-        title_from_mail.grid(row = 1, column = 0, padx = 5, sticky = "w")
-
-        self.register_from_mail = customtkinter.CTkLabel(master= frame_configure, text= "Mail Send ", anchor="center", bg_color= "transparent")
-        self.register_from_mail.grid(row = 1, column = 1, padx = 5, sticky = "w")
-
-        title_time_send = customtkinter.CTkLabel(master= frame_configure, text= "Thời gian gửi: ", anchor="center", bg_color= "transparent")
-        title_time_send.grid(row = 2, column = 0, padx = 5, sticky = "w")
-
-        self.register_time_send = customtkinter.CTkLabel(master= frame_configure, text= "Time Send", anchor="center", bg_color= "transparent")
-        self.register_time_send.grid(row = 2, column = 1, padx = 5, sticky = "w")
-
-        # # Ô nhập dữ liệu test
-        # self.entry_test = customtkinter.CTkEntry(frame_configure, text_color="white", placeholder_text="Nhập giá trị [(9, 30, 0)]", fg_color="black", placeholder_text_color="white",
-        #                         font=("",16,"bold"), width=200, corner_radius=15, height=45)
-        # self.entry_test.grid(row=4,column=0,sticky="nwe",padx=30)
-
-        # # Tạo nút để khi nhấn sẽ lấy giá trị nhập vào và chuyển nó thành list
-        # self.submit_button = customtkinter.CTkButton(
-        #     frame_configure, text="Reload", command=self.check_change_time_to_send_mail  # Liên kết với hàm xử lý
-        # )
-        # self.submit_button.grid(row=4, column=1, padx=30, pady=10)
-
-    def create_setting_leave_day_frame(self, row, column, title):
+    def create_treeview_account_login_frame(self, row, column, rowspan = 1, columnspan = 1, title = "Tiêu đề của bảng"):
         """"
-        Tạo frame cấu hình gửi mail tự động cho frame tính ngày nghỉ của nhân viên trong tháng
+        Tạo frame bao gồm hàng đầu tiên là tiêu đề và hàng thứ hai là Treeview để hiển thị danh sách 
         """
+        # Tạo frame để chứa Treeview và tiêu đề
+        # row, column, rowspan, columnspan: vị trí của frame trong grid layout
         frame_configure = customtkinter.CTkFrame(self)
-        frame_configure.grid(row = row, column = column, padx = 5, pady = 6, sticky = "nsew")
+        frame_configure.grid(row = row, rowspan = rowspan, column = column, columnspan = columnspan, padx = 5, pady = 6, sticky = "nsew")
 
-        title = customtkinter.CTkLabel(master= frame_configure, text= title, anchor="center", bg_color= "transparent")
-        title.grid(row = 0, column = 0, padx = 5, columnspan = 2)
-
-        title_from_mail = customtkinter.CTkLabel(master= frame_configure, text= "Mail gửi thư: ", anchor="center", bg_color= "transparent")
-        title_from_mail.grid(row = 1, column = 0, padx = 5, sticky = "w")
-
-        self.leave_day_from_mail = customtkinter.CTkLabel(master= frame_configure, text= "Mail Send ", anchor="center", bg_color= "transparent")
-        self.leave_day_from_mail.grid(row = 1, column = 1, padx = 5, sticky = "w")
-
-        title_time_send = customtkinter.CTkLabel(master= frame_configure, text= "Ngày kiểm tra: ", anchor="center", bg_color= "transparent")
-        title_time_send.grid(row = 2, column = 0, padx = 5, sticky = "w")
-
-        self.leave_day_time_send = customtkinter.CTkLabel(master= frame_configure, text= "Time Send", anchor="center", bg_color= "transparent")
-        self.leave_day_time_send.grid(row = 2, column = 1, padx = 5, sticky = "w")
-
-    def create_treeview_account_login_frame(self, row, column, rowspan, title):
-        """"
-        Tạo frame chứa danh sách tài khoản đăng ký trên CSDL để quản lý
-        """
-        frame_configure = customtkinter.CTkFrame(self)
-        frame_configure.grid(row = row, rowspan = rowspan, column = column, padx = 5, pady = 6, sticky = "nsew")
-
-        # set grid layout 1x2
+        # Thiết lập cấu hình cho frame
+        # Hàng đầu tiên là tiêu đề không cần kéo dãn, bắt buộc hàng thứ hai là Treeview sẽ kéo dãn theo kích thước của frame
         frame_configure.grid_rowconfigure(1, weight=1)
         frame_configure.grid_columnconfigure(0, weight=1)
 
@@ -160,7 +99,7 @@ class HomePage(customtkinter.CTkFrame):
         style = ttk.Style()
         style.theme_use("clam")
 
-        # Tạo style cho Treeview
+        # Cấu hình màu sắc cho Treeview
         style.configure(
             "Treeview",
             background="white",
@@ -225,7 +164,7 @@ class HomePage(customtkinter.CTkFrame):
             self.activate_user_current = values[2]  # Ngày kích hoạt
             self.role_user_current = values[3]  # Quyền hạn
 
-            # Kích hoạt nút 'Kích hoạt tài khoản'
+            # Kích hoạt các nút bấm
             self.activate_account_button.configure(state="normal")
             self.disable_account_button.configure(state="normal")
             self.delete_account_button.configure(state="normal")
@@ -233,7 +172,7 @@ class HomePage(customtkinter.CTkFrame):
 
     def create_setting_account_login_frame(self, row, column, rowspan, title):
         """
-        Quản lý các tài khoản đăng nhập phần mềm QLNS
+        Quản lý các tài khoản đăng nhập phần mềm
         """
         frame_configure = customtkinter.CTkFrame(self)
         frame_configure.grid(row = row, column = column, rowspan = rowspan, padx = 5, pady = 6, sticky = "nsew")
@@ -244,8 +183,7 @@ class HomePage(customtkinter.CTkFrame):
         title = customtkinter.CTkLabel(master= frame_configure, text= title, anchor="center", bg_color= "transparent")
         title.grid(row = 0, column = 0, padx = 5, columnspan = 2)
 
-        refresh_data= customtkinter.CTkButton(frame_configure, text="Làm mới", anchor="center",
-                                                               )
+        refresh_data= customtkinter.CTkButton(frame_configure, text="Làm mới", anchor="center", command= self.refresh_infor_all_user)
         refresh_data.grid(row = 1, column = 0, padx = 5, pady = 10)
 
         self.activate_account_button= customtkinter.CTkButton(frame_configure, text="Kích hoạt tài khoản", anchor="center", state= "disabled", 
@@ -264,12 +202,11 @@ class HomePage(customtkinter.CTkFrame):
                                                                text_color="black", command= self.change_role_user)
         self.change_role_account_button.grid(row = 4, column = 0, padx = 5, pady = 10)
 
-        # OptionMenu hiển thị ngày
-        privilege = ["Admin", "User", "GA", "HR"]
-        self.optionmenue_privilege_user = customtkinter.StringVar(value=privilege[-1])
+        # OptionMenu hiển thị danh sách quyền hạn người dùng
+        self.optionmenue_privilege_user = customtkinter.StringVar(value=LIST_PERMISSION[-1])
         optionmenu = customtkinter.CTkOptionMenu(
             frame_configure,
-            values=privilege,
+            values=LIST_PERMISSION,
             anchor="center",
             variable=self.optionmenue_privilege_user,
             # command=self.check_select_day_filter  # Gắn callback khi thay đổi
@@ -279,112 +216,111 @@ class HomePage(customtkinter.CTkFrame):
     def not_available(self):
         messagebox.showinfo("Thông báo", "Chức năng đang trong chế độ bảo trì! \nVui lòng thử lại sau.")
         return
-
-    def first_query_for_frame_home_in_thread(self):
+    
+    def refresh_infor_all_user(self):
         """
-        Truy vấn các thông tin ban đầu trong 1 luồng riêng để không gây ảnh hưởng tới giao diện chính
+        Nút bấm lấy thông tin tài khoản người dùng và hiển thị lên treeview
+        """
+        # Hiện popup loading
+        self.show_loading_popup()
+
+        # Tạo luồng mới để cập nhật dữ liệu vào CSDL
+        threading.Thread(target=self.get_all_infor_user_in_thread, daemon= True).start()
+    
+    def get_all_infor_user_in_thread(self):
+        """
+        Truy vấn thông tin người dùng trong một luồng riêng
         """
         try:
-            # Lấy thông tin mail sẽ gửi tin hằng ngày (No-Reply@terumo.co.jp)
-            email_register = self.db.get_email_sender(purpose="register")
-            # Dữ liệu test:
-            # email_register = "No-Reply@terumo.co.jp"
-
-            # Nếu xảy ra lỗi trong quá trình truy vấn
-            if email_register is False:
-                # Thay đổi cờ để dừng truy vẫn sau 10 phút 1 lần
-                self.continue_query = False
-                # Đóng popup
+            results = self.db.get_information_all_user()
+            
+            # Nếu là False thì sẽ là lỗi trong khi truy vấn
+            if results["success"] is False:
+                # Đóng popup và hiển thị messagebox
                 self.after(0, self.hide_loading_popup)
-
-                # Ghi log lại
-                logger.warning("Truy vấn thông tin email người gửi của frame register tại Home xảy ra lỗi, hiển thị mặc định")
-
-                # Tăng số lần thử lại lên 1
-                self.count_retry += 1
-                # Kiểm tra nếu số lần thử lại đã là 3 lần thì thông báo lỗi
-                if (self.count_retry == 3):
-                    self.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"Không thể kết nối tới CSDL. \
-                                 \n Vui lòng liên hệ bộ phận IT"))
-                else:
-                    # Thử lại thêm 1 lần nữa sau 1 phút      
-                    if self.continue_query:
-                        # Sau 1 phút thì truy vấn làm mới dữ liệu một lần, thời gian tính bằng mili giây, 1000ms = 1s
-                        self.after(1000*60*1, self.first_query_for_frame_home)
+                self.after(0, lambda: messagebox.showerror("Lỗi truy vấn", "Không thể truy vấn dữ liệu người dùng từ CSDL."))
                 return
             
-            # Lấy thông tin thời gian gửi mail hằng ngày
-            time_schedule = self.db.get_time_schedule()
-            # Dữ liệu test
-            # time_schedule = [(25, 12, 12, 00)]
-            
-            # Nếu lỗi kết nối tới CSDL
-            if time_schedule is False:
-                # Thay đổi cờ để dừng truy vẫn sau 30 phút 1 lần
-                self.continue_query = False
-                # Đóng popup
-                self.after(0, self.hide_loading_popup)
-
-                # Ghi log lại
-                logger.warning("Truy vấn thông tin thời gian gửi mail của frame register tại Home xảy ra lỗi, hiển thị mặc định")
-
-                # Tăng số lần thử lại lên 1
-                self.count_retry += 1
-                # Kiểm tra nếu số lần thử lại đã là 3 lần thì thông báo lỗi
-                if (self.count_retry == 3):
-                    self.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"Không thể kết nối tới CSDL. \
-                                 \n Vui lòng liên hệ bộ phận IT"))
-                else:
-                    # Thử lại thêm 1 lần nữa sau 1 phút      
-                    if self.continue_query:
-                        # Sau 1 phút thì truy vấn làm mới dữ liệu một lần, thời gian tính bằng mili giây, 1000ms = 1s
-                        self.after(1000*60*1, self.first_query_for_frame_home)
-                return
-            
-            # Lấy lịch gửi mail hằng tháng
-            date_schedule = self.db.get_time_schedule(status= "LeaveDay")
-            # Dữ liệu test
-            # date_schedule = [(25,12,12,12)]
-
-            # Nếu lỗi kết nối tới CSDL
-            if date_schedule is False:
-                # Thay đổi cờ để dừng truy vẫn sau 30 phút 1 lần
-                self.continue_query = False
-                # Đóng popup
-                self.after(0, self.hide_loading_popup)
-
-                # Ghi log lại
-                logger.warning("Truy vấn thông tin thời gian gửi mail của frame register tại Home xảy ra lỗi, hiển thị mặc định")
-
-                # Tăng số lần thử lại lên 1
-                self.count_retry += 1
-                # Kiểm tra nếu số lần thử lại đã là 3 lần thì thông báo lỗi
-                if (self.count_retry == 3):
-                    self.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"Không thể kết nối tới CSDL. \
-                                 \n Vui lòng liên hệ bộ phận IT"))
-                else:
-                    # Thử lại thêm 1 lần nữa sau 1 phút      
-                    if self.continue_query:
-                        # Sau 1 phút thì truy vấn làm mới dữ liệu một lần, thời gian tính bằng mili giây, 1000ms = 1s
-                        self.after(1000*60*1, self.first_query_for_frame_home)
-                return
-
-            # Đưa dữ liệu vào queue
-            self.data_information_for_register_frame.put(email_register)
-            self.data_information_for_register_frame.put(time_schedule)
-            self.data_information_for_register_frame.put(date_schedule)
-
-            # Nếu truy vấn thành công thì đặt số lần thử lại về ban đầu
-            self.count_retry = 1
-
-            # Sửa giao diện chương trình chính sau khi thu được dữ liệu
-            self.after(0, self.process_first_information_gui)
+            # Đưa dữ liệu vào Queue để xử lý
+            self.data_user_queue.put(results["data"])
+            # Gọi hàm xử lý giao diện chính
+            self.after(0, self.process_data_all_user)
 
         except Exception as e:
             self.after(0, self.hide_loading_popup)
-            # Xảy ra lỗi khi truy vấn sẽ hủy gọi lại hàm này
-            self.continue_query = False
-            logger.error(f"Xảy ra lỗi trong lúc truy vấn thông tin ban đầu cho frame HOME: {e}")
+            self.after(0, lambda err=e: messagebox.showerror("Lỗi truy vấn", f"Xảy ra lỗi: {str(err)}. \nVui lòng thử lại sau."))
+            logger.error(f"Xảy ra lỗi trong lúc truy vấn thông tin người dùng từ CSDL: {e}")
+
+    def process_data_all_user(self):
+        """
+        Hiển thị dữ liệu từ người dùng lên treeview
+        """
+        data = self.data_user_queue.get()
+        
+        if data:
+            # List lưu trữ dữ liệu sau khi đã xử lý
+            processed_rows = []
+            # Duyệt qua từng hàng dữ liệu
+            for i, row in enumerate(data):
+                processed_row = []  # Danh sách mới để lưu giá trị đã xử lý cho mỗi hàng
+
+                # Xử lý các giá trị cho mỗi cột trong row
+                # for index, value in enumerate(row):
+                #     # Kiểm tra và thay thế giá trị None cho cột "Bo Phan"
+                #     if TABLE_COLUMN_LIST_EMPLOYEE_REGISTER[index] == "Bo Phan" and value is None:
+                #         processed_row.append("JP")  # Thay thế None ở cột "BoPhan" bằng "JP"
+                #     # Kiểm tra và thay thế giá trị None cho các cột khác
+                #     # elif value is None:
+                #     #     processed_row.append(0)  # Thay thế None ở các cột khác bằng 0
+                #     else:
+                #         processed_row.append(value)  # Nếu không phải None, giữ nguyên giá trị
+
+                # Thêm hàng đã xử lý vào danh sách processed_rows
+                processed_rows.append(tuple(processed_row))  # Thêm processed_row dưới dạng tuple vào processed_rows
+        
+            # Hiển thị dữ liệu lên treeview
+            self.insert_data_to_treeview(treeview= self.treeview_account, data= data, column_data= ACCOUNT_TABLE_COLUMN_LIST)
+
+            # Đóng các nút thao tác
+            self.activate_account_button.configure(state="disabled")
+            self.disable_account_button.configure(state="disabled")
+            self.delete_account_button.configure(state="disabled")
+            self.change_role_account_button.configure(state="disabled")
+            
+            # Đóng popup
+            self.hide_loading_popup()
+        else:
+            # Nếu không có dữ liệu thì hiển thị thông báo
+            self.hide_loading_popup()
+            messagebox.showwarning("Không có dữ liệu", "Không tìm thấy dữ liệu về người dùng.")
+            
+            return
+        
+    def insert_data_to_treeview(self, treeview: ttk.Treeview, data:list, column_data: list):
+        """
+        Hiển thị dữ liệu lên treeview tương ứng với dữ liệu thô thu đươc từ CSDL
+        """
+        # Đặt tiêu đề cột cho Treeview
+        treeview["columns"] = column_data  # Cập nhật các cột trong Treeview
+        for col in column_data:
+            treeview.heading(col, text=col)
+            treeview.column(col, width=50, anchor="center", stretch=True)  # Cấu hình chiều rộng cột
+
+        # Xóa các hàng cũ trong Treeview
+        for row in treeview.get_children():
+            treeview.delete(row)
+
+        # Chèn dữ liệu từ cơ sở dữ liệu vào Treeview
+        number_data = len(data)
+        for i, row in enumerate(data):
+
+            row_tag = ''  # Mặc định không có tag
+            for value in row:
+                if value is None:  # Kiểm tra nếu giá trị là None trong từng dòng dữ liệu
+                    row_tag = 'missing'  # Gán tag 'missing' cho dòng này
+
+            # Chèn dữ liệu từng dòng vào tương ứng với từng cột trong treeview
+            treeview.insert("", "end", values=list(row), tags=(row_tag,))
 
     def activate_account_user(self, activate = True):
         """
@@ -445,7 +381,7 @@ class HomePage(customtkinter.CTkFrame):
 
         if result:
             logger.info("Sử dụng chức năng xóa tài khoản với người dùng: %s", self.username_user_current)
-            self.show_loading_popup_progress()
+            self.show_loading_popup()
             # Tạo luồng mới để cập nhật dữ liệu vào CSDL
             threading.Thread(target=self.delete_account_user_in_thread, daemon= True).start()
 
@@ -498,42 +434,59 @@ class HomePage(customtkinter.CTkFrame):
             self.show_loading_popup_progress()
             # Tạo luồng mới để cập nhật dữ liệu vào CSDL
             threading.Thread(target=self.delete_account_user_in_thread, args=(privilege,), daemon= True).start()
-        
-    def delete_account_user_in_thread(self, privilege):
+
+    def show_loading_popup(self):
         """
-        Thay đổi quyền hạn người dùng trong 1 luồng riêng
+        Hiển thị popup với thanh tiến trình khi tải dữ liệu.
         """
-        try:
-            result = self.db.change_role_user(email= self.email_user_current, privilege= privilege)
+        # Tạo cửa sổ Toplevel
+        self.loading_popup = customtkinter.CTkToplevel(self,fg_color=("#3cb371", "#3cb371"))
+        self.loading_popup.title("Đang tải dữ liệu...")
 
-            if result:
-                self.after(0, self.hide_loading_popup)
-                self.after(0, lambda: messagebox.showinfo("Thành công", f"Đã thay đổi quyền hạn {self.username_user_current}."))
+        # Ẩn thanh tiêu đề và các nút chức năng của cửa sổ
+        self.loading_popup.overrideredirect(True)
 
-                # Hủy kích hoạt nút
-                self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
-                self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
-                self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
-                self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
-            
-            else:
-                self.after(0, self.hide_loading_popup)
-                self.after(0, lambda: messagebox.showerror("Lỗi kết nối", "Không thể thay đổi quyền hạn tài khoản người dùng. Thử lại sau."))
-                # Hủy kích hoạt nút
-                self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
-                self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
-                self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
-                self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+        # Lấy tọa độ và kích thước của màn hình gốc
+        self.update()
+        x_main = self.winfo_x()
+        y_main = self.winfo_y()
+        width_main = self.winfo_width()
+        height_main = self.winfo_height()
 
-        except Exception as e:
-            self.after(0, self.hide_loading_popup)
-            self.after(0, lambda: messagebox.showerror("Lỗi kết nối", "Không thể kích hoạt/ khóa tài khoản người dùng. Thử lại sau."))
-            logger.error(f"Xảy ra lỗi trong lúc xóa tài khoản người dùng: {e}") 
-            # Hủy kích hoạt nút
-            self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
-            self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
-            self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
-            self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+        # Đặt kích thước của màn hình loading
+        width = 150
+        height = 150
+
+        x_rel = round((width_main - width)/2)
+        y_rel = round((height_main - height)/2)
+
+        x = x_rel + x_main
+        y = y_rel + y_main
+
+        # Cập nhật vị trí cửa sổ
+        self.loading_popup.geometry(f'{width}x{height}+{x}+{y}')
+
+        # Tạo label hiển thị gif
+        resize_dimensions = (150,150)
+        self.loading_label = LoadingGifLabel(self.loading_popup, resize=resize_dimensions)
+        self.loading_label.pack(fill='both', expand=True, padx = 2, pady = 2)
+        self.loading_label.load(resource_path("assets\\images\\loading\\loading_gif.gif"))
+
+        # Khóa cửa sổ chính để chỉ có thể tương tác với cửa sổ con
+        self.parent.wm_attributes("-disabled", True)  
+        self.loading_popup.grab_set()  # Vô hiệu hóa các cửa sổ khác trong khi tải
+    
+    def hide_loading_popup(self):
+        """
+        Ẩn popup khi tải xong.
+        """
+        self.parent.wm_attributes("-disabled", False)  # Bật lại cửa sổ chính
+        if hasattr(self, 'loading_popup'):
+            # Gọi unload để giải phóng tài nguyên GIF trước khi đóng popup
+            if hasattr(self.loading_label, 'unload'):
+                self.loading_label.unload()
+            # Destroy popup
+            self.loading_popup.destroy() 
 
 
 if __name__ == "__main__":
