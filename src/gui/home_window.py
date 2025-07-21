@@ -62,8 +62,8 @@ class HomePage(customtkinter.CTkFrame):
         # set grid layout 1x2
         # self.grid_rowconfigure(0, weight=1)
         # self.grid_columnconfigure(1, weight=1)
-        self.treeview_account = self.create_treeview_account_login_frame(row= 0, column= 1, rowspan = 2, title= "Thông tin tài khoản")
-        self.create_setting_account_login_frame(row= 0, column= 2, rowspan = 2, title= "Cài đặt tài khoản")
+        self.treeview_account = self.create_treeview_account_login_frame(row= 0, column= 0, rowspan = 2, title= "Thông tin tài khoản")
+        self.create_setting_account_login_frame(row= 0, column= 1, rowspan = 2, title= "Cài đặt tài khoản")
 
     def create_treeview_account_login_frame(self, row, column, rowspan = 1, columnspan = 1, title = "Tiêu đề của bảng"):
         """"
@@ -194,13 +194,24 @@ class HomePage(customtkinter.CTkFrame):
                                                                command= lambda: self.activate_account_user(activate= False))
         self.disable_account_button.grid(row = 2, column = 1, padx = 5, pady = 10)
 
-        self.delete_account_button= customtkinter.CTkButton(frame_configure, text="Xóa tài khoản", anchor="center", state= "disabled", fg_color="#c0392b",
+        self.delete_account_button= customtkinter.CTkButton(frame_configure, text="Xóa tài khoản", anchor="center", state= "disabled", fg_color= COLOR["DANGER_BUTTON_COLOR"],
                                                                command= self.delete_account_user)
         self.delete_account_button.grid(row = 3, column = 0, columnspan = 2, padx = 5, pady = 10)
 
         self.change_role_account_button= customtkinter.CTkButton(frame_configure, text="Thay đổi quyền", anchor="center", state= "disabled", fg_color="#b9770e",
                                                                text_color="black", command= self.change_role_user)
         self.change_role_account_button.grid(row = 4, column = 0, padx = 5, pady = 10)
+
+        # input để nhập đổi mật khẩu
+        self.input_change_password = customtkinter.CTkEntry(frame_configure, placeholder_text="Nhập mật khẩu mới", show="*", width= 150)
+        self.input_change_password.grid(row=5, column=0, padx=5, pady=10, sticky="w")
+        # input để nhập lại mật khẩu
+        self.input_change_password_again = customtkinter.CTkEntry(frame_configure, placeholder_text="Nhập lại mật khẩu mới", show="*", width= 150)
+        self.input_change_password_again.grid(row=5, column=1, padx=5, pady=10, sticky="w")
+
+        self.change_password_account_button= customtkinter.CTkButton(frame_configure, text="Đổi mật khẩu", anchor="center", state= "disabled", fg_color=COLOR["WARNING_BUTTON_COLOR"],
+                                                               text_color="black", command= self.change_role_user)
+        self.change_password_account_button.grid(row = 6, column = 0, columnspan = 2, padx = 5, pady = 10)
 
         # OptionMenu hiển thị danh sách quyền hạn người dùng
         self.optionmenue_privilege_user = customtkinter.StringVar(value=LIST_PERMISSION[-1])
@@ -331,7 +342,7 @@ class HomePage(customtkinter.CTkFrame):
 
         if result:
             logger.info("Sử dụng chức năng kích hoạt tài khoản với người dùng: %s", self.username_user_current)
-            self.show_loading_popup_progress()
+            self.show_loading_popup()
             # Tạo luồng mới để cập nhật dữ liệu vào CSDL
             threading.Thread(target=self.activate_account_user_in_thread, args=(activate, ), daemon= True).start()
 
@@ -431,9 +442,45 @@ class HomePage(customtkinter.CTkFrame):
         if result:
             privilege = self.optionmenue_privilege_user.get()
             logger.info("Sử dụng chức năng thay đổi quyền hạn người dùng: %s", self.username_user_current)
-            self.show_loading_popup_progress()
+            self.show_loading_popup()
             # Tạo luồng mới để cập nhật dữ liệu vào CSDL
-            threading.Thread(target=self.delete_account_user_in_thread, args=(privilege,), daemon= True).start()
+            threading.Thread(target=self.change_role_user_in_thread, args=(privilege,), daemon= True).start()
+
+    def change_role_user_in_thread(self, privilege):
+        """
+        Thay đổi quyền hạn người dùng trong 1 luồng riêng
+        """
+        try:
+            result = self.db.change_role_user(email= self.email_user_current, privilege= privilege)
+
+            if result:
+                self.after(0, self.hide_loading_popup)
+                self.after(0, lambda: messagebox.showinfo("Thành công", f"Đã thay đổi quyền hạn {self.username_user_current}."))
+
+                # Hủy kích hoạt nút
+                self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+            
+            else:
+                self.after(0, self.hide_loading_popup)
+                self.after(0, lambda: messagebox.showerror("Lỗi kết nối", "Không thể thay đổi quyền hạn tài khoản người dùng. Thử lại sau."))
+                # Hủy kích hoạt nút
+                self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+
+        except Exception as e:
+            self.after(0, self.hide_loading_popup)
+            self.after(0, lambda: messagebox.showerror("Lỗi kết nối", "Không thể kích hoạt/ khóa tài khoản người dùng. Thử lại sau."))
+            logger.error(f"Xảy ra lỗi trong lúc xóa tài khoản người dùng: {e}") 
+            # Hủy kích hoạt nút
+            self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
 
     def show_loading_popup(self):
         """
