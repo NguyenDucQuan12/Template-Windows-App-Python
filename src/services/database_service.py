@@ -132,7 +132,7 @@ class My_Database:
         """
         Truy vấn thông tin tất cả người dùng.
         """
-        query = "SELECT User_Name, Email, Activate, Privilege FROM Users"
+        query = "SELECT User_Name, Email, Activate, Privilege, OTP, Expired_OTP FROM Users"
         result = self._execute_query(query)
 
         # Trả về kết quả rõ ràng
