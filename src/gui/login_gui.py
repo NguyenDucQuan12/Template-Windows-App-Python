@@ -196,7 +196,7 @@ class LoginWindow(ctk.CTkToplevel):
             messagebox.showinfo("Thông báo", f"Đã gửi mail tới {to_email}. Hãy kiểm tra địa chỉ email của bạn.")
         else:
             logger.warning("Lỗi khi gửi mail tới địa chỉ không hợp lệ: %s", to_email)
-            messagebox.showwarning("Cảnh báo", f"Tài khoản {to_email} không hợp lệ.")
+            messagebox.showwarning("Cảnh báo", f"Không thể gửi mail tới {to_email}. \nVui lòng thử lại sau.")
 
     def get_OTP_for_reset_password(self):
         """
@@ -460,31 +460,59 @@ class LoginWindow(ctk.CTkToplevel):
             messagebox.showwarning("Cảnh báo","Mật khẩu bạn nhập không trùng nhau, hãy kiểm tra lại!")
             return
         
+        # Hiển thị popup thông báo đang tạo tài khoản mới
+        self.show_loading_popup()
+
+        # Tạo luồng mới để lưu thông tin tài khoản mới vào CSDL
+        new_account = {"email": email, "username": username, "password": password}
+        threading.Thread(target=self.create_new_account_login_in_thread, args=(new_account,), daemon=True).start()
         
+
+    def create_new_account_login_in_thread(self, new_account):
+        """
+        Lưu thông tin tài khoản mới vào tệp cấu hình trong một luồng riêng
+        """
         # Thêm thông tin người dùng mới vào CSDL
         try:
             # Kiểm tra email đã tồn tại trong CSDL chưa
-            check_user = self.database.get_username(email= email)
+            check_user = self.database.get_username(email= new_account["email"])
             # Kiểm tra kết quả trả về
             if check_user["success"]:
                 if check_user["data"]:
-                    messagebox.showwarning("Tài khoản đã tồn tại","Email này đã được sử dụng dể đăng ký tài khoản, vui lòng chọn email khác.")
+
+                    # Hủy cửa sổ loading
+                    self.after(0, self.hide_loading_popup)
+
+                    # Nếu có dữ liệu trả về thì email đã tồn tại trong CSDL
+                    self.after(0, lambda: messagebox.showwarning("Email đã tồn tại", f"Email {new_account['email']} đã được đăng ký. \nVui lòng sử dụng email khác."))
                     return
             else:
-                messagebox.showwarning("Xảy ra lỗi", f"Có lỗi xảy ra: {check_user["message"]} \nVui lòng thử lại sau.")
+                # Hủy cửa sổ loading
+                self.after(0, self.hide_loading_popup)
+                # Nếu có lỗi xảy ra trong quá trình kiểm tra email, thông báo lỗi
+                self.after(0, lambda: messagebox.showwarning("Lỗi kiểm tra email", f"Có lỗi xảy ra: {check_user['message']} \nVui lòng thử lại sau."))
                 return
-        
-            create_new_user_result = self.database.create_new_user(username= username, email= email, password= password)
+
+            # Lưu thông tin tài khoản mới vào CSDL
+            create_new_user_result = self.database.create_new_user(username= new_account["username"], email= new_account["email"], password= new_account["password"])
             if create_new_user_result["success"]:
                  # Gửi email thông báo đã tạo tài khoản thành công
-                self.email_sender.send_email_for_new_account(to_email= email, name= username, website_name= self.software_name,
-                                                            callback = self.email_callback)
+                self.email_sender.send_email_for_new_account(to_email= new_account["email"], name= new_account["username"], website_name= self.software_name)
+                # Đóng cửa sổ loading
+                self.after(0, self.hide_loading_popup)
+                self.after(0, lambda: messagebox.showinfo("Tạo tài khoản thành công", f"Bạn đã tao tài khoản thành công với email: {new_account['email']}. \nHãy đăng nhập để sử dụng phần mềm."))
                 return
             else:
-                messagebox.showerror("Xảy ra lỗi khi tạo mới tài khoản", f"{create_new_user_result["message"]} \nLiên hệ nhà phát triển để xử lý.")
+                # Hủy cửa sổ loading
+                self.after(0, self.hide_loading_popup)
+                # Nếu có lỗi xảy ra trong quá trình tạo tài khoản, thông báo lỗi    
+                self.after(0, lambda: messagebox.showerror("Lỗi tạo tài khoản", f"{create_new_user_result['message']} \nVui lòng thử lại sau."))
                 return
 
         except Exception as e:
+            # Hủy cửa sổ loading
+            self.after(0, self.hide_loading_popup)
+            # Nếu có lỗi xảy ra trong quá trình tạo tài khoản, thông báo lỗi
             self.after(0, lambda err=e: messagebox.showerror("Lỗi tạo tài khoản", f"Xảy ra lỗi: {str(err)}. \nHãy thử lại sau."))
 
     def back_to_login_frame(self):
