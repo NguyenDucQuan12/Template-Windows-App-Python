@@ -27,6 +27,11 @@ python -m pip install -r requirements.txt
 
 ![image](assets/github/images/setup_virtual_enviroment.png)
 
+Liệt kê các thư viện đã sử dụng vào tệp `requirements.txt`:  
+```python
+python -m pip freeze > requirements.txt
+```
+
 # Tạo CSDL
 
 > [!NOTE]  
