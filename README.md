@@ -91,8 +91,8 @@ INSERT INTO Users
 VALUE (
     N'Nguyễn Đức Quân',
     'nguyenducquan2001@gmail.com',
-    'password_hashed',
-    'salt_password',
+    '152a4a4f24e8481810b9b01c1ef148034f38c17fb40175e29201b767906558f455032735d0f144f052bd10bac553191dbd02c8d3d3c594023c8517ea72f47955',
+    'ca5e4c62a549cbe349b5cb78822ad671',
     GETDATE(), -- Lấy thời gian hiện tại
     'Admin',
     'hst283r',
@@ -102,6 +102,7 @@ VALUE (
 ```
 
 > Lưu ý giá trị 2 trường `Password` và `Salt_Password` phải tuân thủ cách mã hóa ở [tệp mã hóa](src/services/hash.py).  
+> Ví dụ mật khẩu phía trên là: `123456789`  
 
 Để có thể có quyền truy cập vào CSDL bằng tài khoản thì ta cần tạo tài khoản login, tạo người dùng và cấp quyền trong SQL Server:
 
