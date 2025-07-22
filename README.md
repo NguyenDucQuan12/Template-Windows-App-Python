@@ -1,9 +1,10 @@
-# Chương trình phần mềm trên máy tính windows được xây dựng bằng Python
+# Chương trình phần mềm trên máy tính windows được xây dựng bằng Python  
 
-> [!SUCCESS]
+
+> [!INFO]  
 > Tổng quan về phần mềm  
 
-## 1.Phần mềm có chức năng đăng nhập trước khi sử dụng phần mềm.  
+## 1.Phần mềm có chức năng đăng nhập trước khi sử dụng phần mềm  
 
 ![image](assets/github/images/login_screen_windows.png)
 
@@ -39,10 +40,18 @@ Sau khi đăng nhập phần mềm thành công sẽ tiến vào trang chủ (n�
 
 Tại đây có thể `kích hoạt tài khoản`, `Xóa tài khoản`, `Thay đổi quyền hạn`, ...  
 
-> [!IMPORTANT]  
-> ## Yêu cầu phiên bản Python từ 3.12 trở lên
 
-# Tạo môi trường ảo
+> [!INFO]  
+> Lập trình phần mềm với Python  
+
+> [!IMPORTANT]  
+> Trước khi đi vào lập trình phần mềm cần lưu ý một số điều sau  
+> Python: từ 3.12 trở lên  
+> Database: Sử dụng SQL Server  
+
+# 1. Tạo môi trường ảo
+
+Để đảm bảo an toàn và tránh cài đặt những thứ không cần thiết vào thư mục gốc của máy tính thì ta sử dụng môi trường ảo. Có thể tham khảo về môi trường ảo trong Python tại [github](https://github.com/NguyenDucQuan12/virtual_environment_python) hoặc [youtube](https://youtu.be/FnqKNUp4Htg).  
 
 Chạy lệnh sau để tạo môi trường ảo:  
 
@@ -50,7 +59,7 @@ Chạy lệnh sau để tạo môi trường ảo:
 python -m venv .venv_source --prompt="virtual environment source"
 ```
 
-Nếu trong máy bạn có nhiều hơn 1 phiên bản python thì chạy như sau:  
+Nếu trong máy bạn có nhiều hơn 1 phiên bản Python thì chạy như sau (ví dụ chỉ định cụ thể phiên bản 3.12):  
 ```python
 py -3.12 -m venv .venv_source --prompt="virtual environment source"
 ```
@@ -72,10 +81,12 @@ Liệt kê các thư viện đã sử dụng vào tệp `requirements.txt`:
 python -m pip freeze > requirements.txt
 ```
 
-# Tạo CSDL
+# 2. Tạo CSDL
 
 > [!NOTE]  
 > ## Cài đặt driver ODBC cho từng thiết bị!  
+
+Để có thể kết nối được `Python` với `SQL Server` ta cần sử dụng `driver ODBC`. Driver được tải trực tiếp từ `Microsoft`.  
 
 Đầu tiên ta cần tạo 1 CSDL trước có tên là `DucQuanApp`:  
 ```SQL
@@ -323,5 +334,5 @@ WHERE
 ```
 
 
-> [!QUESTION]
+> [!QUESTION]  
 > ❓ Các câu hỏi thường gặp  
