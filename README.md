@@ -9,9 +9,9 @@
 ![image](assets/github/images/login_screen_windows.png)
 
 > [!TIP]
-> 💡 Tài khoản đăng nhập mặc định **tên đăng nhập: Test, mật khẩu: Test**  
+> 💡 Tài khoản đăng nhập mặc định **Test - Test**  
 
-Phần mềm đươc phân quyền với 3 mức độ: `Admin`, `User`, `Guest`  
+Phần mềm được phân quyền với 3 mức độ: `Admin`, `User`, `Guest`  
 
 - `Admin`: Được truy cập toàn bộ chức năng  
 - `User`: Được truy cập toàn bộ chức năng (Ngoại trừ trang chủ)  
@@ -41,8 +41,7 @@ Sau khi đăng nhập phần mềm thành công sẽ tiến vào trang chủ (n�
 Tại đây có thể `kích hoạt tài khoản`, `Xóa tài khoản`, `Thay đổi quyền hạn`, ...  
 
 
-> [!NOTE]  
-> Lập trình phần mềm với Python  
+# Lập trình phần mềm với Python  
 
 > [!IMPORTANT]  
 > **Trước khi đi vào lập trình phần mềm cần lưu ý một số điều sau**  
