@@ -227,14 +227,15 @@ class App(ctk.CTk):
     def check_for_updates(self):
         """
         Nếu có bản cập nhật, khởi chạy updater và đóng ứng dụng.  
-        Tệp tin chứa phiên bản trả về như sau:  
+        Tệp tin chứa hông tin phiên bản trả về như sau:  
         ```
         {
             "server": "http://10.239.2.63:3838",  
             "application_name": "app_name",  
             "latest_version": "0.0.1",  
             "release_notes": "Mô tả thay đổi so với phiên bản trước",  
-            "validation": 0  
+            "validation": 0,
+            "update_for": "Admin"
         }
         ```
         """
@@ -244,20 +245,26 @@ class App(ctk.CTk):
         if version_info:
             # Lấy thông tin phiên bản mới nhất
             latest_version = version_info.get("latest_version")
+            # Lấy thông tin user (Xem những đối tượng nào cần cập nhật)
+            required_user = version_info.get("update_for")
             logger.info("Phiên bản giữa server - local: %s - %s", latest_version, CURRENT_VERSION)
 
+            # So sánh hai phiên bản để nhận diện có bản cập nhật
             if version.parse(latest_version) > version.parse(CURRENT_VERSION):
+
+                # Nếu người đăng nhập phần mềm trùng với yêu cầu cần cập nhật thì lúc đó mới cập nhật
+                if self.permission == required_user: 
                 
-                # Hiển thị lời nhắc cho người dùng
-                response = messagebox.askyesno("Cập Nhật phần mềm", f"Phiên bản mới ({latest_version}) đã có.\nVui lòng tiến hành cập nhật phần mềm để tiếp tục sử dụng.")
-                
-                if response:
-                    # Tiến hành chạy cập nhật chương trình khi người dùng đồng ý cập nhật
-                    self.launch_updater()
-                else:
-                    logger.warning("Người dùng không cập nhật phần mềm, tiến hành đóng ứng dụng")
-                    # Đóng ứng dụng chính mà không hỏi
-                    self.on_closing(force_close=True)
+                    # Hiển thị lời nhắc cho người dùng
+                    response = messagebox.askyesno("Cập Nhật phần mềm", f"Phiên bản mới ({latest_version}) đã có.\nVui lòng tiến hành cập nhật phần mềm để tiếp tục sử dụng.")
+                    
+                    if response:
+                        # Tiến hành chạy cập nhật chương trình khi người dùng đồng ý cập nhật
+                        self.launch_updater()
+                    else:
+                        logger.warning("Người dùng không cập nhật phần mềm, tiến hành đóng ứng dụng")
+                        # Đóng ứng dụng chính mà không hỏi
+                        self.on_closing(force_close=True)
 
     def launch_updater(self):
         """
@@ -404,7 +411,9 @@ class App(ctk.CTk):
 
     def login_success(self, permission):
         """
-        Nếu đăng nhập thành công thì mở lại giao diện chính và phân quyền truy cập các frame.
+        Nếu đăng nhập thành công:  
+        - Kiểm tra phiên bản cập nhật  
+        - Tạo các frame tương ứng với quyền hạn người dùng
         """
         self.deiconify()
         self.permission = permission
