@@ -1,6 +1,6 @@
 # Chương trình phần mềm trên máy tính windows được xây dựng bằng Python
 
-> [!INFO]  
+> [!SUCCESS]
 > Tổng quan về phần mềm  
 
 ## 1.Phần mềm có chức năng đăng nhập trước khi sử dụng phần mềm.  
@@ -8,7 +8,7 @@
 ![image](assets/github/images/login_screen_windows.png)
 
 > [!TIP]
-> 💡 Tài khoản đăng nhập mặc định ** tên đăng nhập: Test, mật khẩu: Test**  
+> 💡 Tài khoản đăng nhập mặc định **tên đăng nhập: Test, mật khẩu: Test**  
 
 Phần mềm đươc phân quyền với 3 mức độ: `Admin`, `User`, `Guest`  
 
@@ -321,3 +321,7 @@ JOIN
 WHERE 
     ob.name = 'Users';  -- Tên bảng hoặc đối tượng bạn muốn kiểm tra
 ```
+
+
+> [!QUESTION]
+> ❓ Các câu hỏi thường gặp  
