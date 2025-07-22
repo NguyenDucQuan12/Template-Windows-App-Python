@@ -1,14 +1,10 @@
 import customtkinter
 from tkinter import ttk, messagebox
+import tkinter as tk
 import threading
-import calendar
 import queue
-from PIL import Image
-from itertools import count
-from datetime import datetime, timedelta, date
-import time
 import logging
-import pandas as pd  # pip install pandas
+from ctypes import windll
 
 # Mở comment 3 dòng bên dưới mỗi khi test (Chạy trực tiếp hàm if __main__)
 import os,sys
@@ -28,6 +24,29 @@ from schedule_work.schedule_work import Schedule_Auto
 
 logger = logging.getLogger(__name__)
 
+def get_screen_dpi():
+    """
+    Tính toán DPI của màn hình thiết bị Windows
+    Bởi customTkinter hỗ trợ tự động điều chỉnh giao diện tùy theo DPI của màn hình máy tính  
+    Còn Treeview của Tkinter thì không hỗ trợ tự động điều chỉnh DPI, nên cần phải tính toán giá trị DPI của màn hình rồi đưa ra font size phù hợp
+    """
+    base_font_size = 10  # Kích thước font mặc định cho DPI 96 (Là scale 100% trên Windows)
+    base_row_height = 28  # Kích thước font mặc định cho DPI 96 (Là scale 100% trên Windows)
+
+    LOGPIXELSX = 88  # Horizontal DPI
+    LOGPIXELSY = 90  # Vertical DPI
+
+    user32 = windll.user32
+    user32.SetProcessDPIAware()  # Important for accurate results
+    dc = user32.GetDC(0)
+    horizontal_dpi = windll.gdi32.GetDeviceCaps(dc, LOGPIXELSX)
+    vertical_dpi = windll.gdi32.GetDeviceCaps(dc, LOGPIXELSY)
+    user32.ReleaseDC(0, dc)
+
+    # Tính toán kích thước font dựa trên DPI
+    font_size = int(base_font_size * (vertical_dpi / 96))
+    row_height = int(base_row_height * (vertical_dpi / 96))
+    return font_size, row_height
 
 class HomePage(customtkinter.CTkFrame):
     """
@@ -95,6 +114,9 @@ class HomePage(customtkinter.CTkFrame):
         """
         Tạo treeview để hiển thị danh sách dữ liệu theo bảng
         """
+        # Tính toán kích thước font dựa trên DPI của thiết bị
+        font_size, row_hight = get_screen_dpi()
+
         # Tạo style cho Treeview (ttk)
         style = ttk.Style()
         style.theme_use("clam")
@@ -104,22 +126,34 @@ class HomePage(customtkinter.CTkFrame):
             "Treeview",
             background="white",
             foreground="black",
-            rowheight=25,
+            rowheight= row_hight,
             fieldbackground="#f0f0f0",  # Màu nền các ô trong Treeview
-            bordercolor="#343638",
-            borderwidth=1
-        )
-        style.map("Treeview", background=[('selected', '#4CAF50')])  # Màu nền khi chọn dòng
+            bordercolor="#ffc61e", # Màu viền của treeview, không phải từng hàng
+            borderwidth=10,
+            font=("Arial", font_size))  # Cập nhật phông chữ cho các hàng giá trị
+        
+
+        # style.map("Treeview", background=[('selected', '#4CAF50')])  # Màu nền khi chọn dòng
 
         # Đặt màu nền cho tiêu đề cột
         style.configure("Treeview.Heading",
                         background="#565b5e",  # Màu nền của tiêu đề
                         foreground="white",    # Màu chữ của tiêu đề
-                        relief="flat")
+                        relief="flat",
+                        font=("Arial", font_size)  # Cập nhật phông chữ cho tiêu đề
+                        )
         
         style.map("Treeview.Heading", background=[('active', '#3484F0')])  # Màu nền của tiêu đề khi hover
-        # Thêm đường viền khi chọn dòng
-        style.map("Treeview", background=[('selected', '#4CAF50')])
+
+        # Đặt màu nền cho tiêu đề cột
+        style.configure("Treeview.Row",
+                        background="#e81091",  # Màu nền của tiêu đề
+                        foreground="white",    # Màu chữ của tiêu đề
+                        relief="flat",
+                        bordercolor="#ffc61e",
+                        borderwidth = 10, 
+                        font=("Time New Roman", 100)  # Cập nhật phông chữ cho tiêu đề
+                        )
 
         # Tạo Treeview
         treeview = ttk.Treeview(
@@ -169,6 +203,7 @@ class HomePage(customtkinter.CTkFrame):
             self.disable_account_button.configure(state="normal")
             self.delete_account_button.configure(state="normal")
             self.change_role_account_button.configure(state="normal")
+            self.change_password_account_button.configure(state="normal")
 
     def create_setting_account_login_frame(self, row, column, rowspan, title):
         """
@@ -183,8 +218,8 @@ class HomePage(customtkinter.CTkFrame):
         title = customtkinter.CTkLabel(master= frame_configure, text= title, anchor="center", bg_color= "transparent")
         title.grid(row = 0, column = 0, padx = 5, columnspan = 2)
 
-        refresh_data= customtkinter.CTkButton(frame_configure, text="Làm mới", anchor="center", command= self.refresh_infor_all_user)
-        refresh_data.grid(row = 1, column = 0, padx = 5, pady = 10)
+        refresh_data= customtkinter.CTkButton(frame_configure, text="Danh sách tài khoản", anchor="center", command= self.get_infor_all_user)
+        refresh_data.grid(row = 1, column = 0, columnspan = 2, padx = 5, pady = 10)
 
         self.activate_account_button= customtkinter.CTkButton(frame_configure, text="Kích hoạt tài khoản", anchor="center", state= "disabled", 
                                                                command= self.activate_account_user)
@@ -210,7 +245,7 @@ class HomePage(customtkinter.CTkFrame):
         self.input_change_password_again.grid(row=5, column=1, padx=5, pady=10, sticky="w")
 
         self.change_password_account_button= customtkinter.CTkButton(frame_configure, text="Đổi mật khẩu", anchor="center", state= "disabled", fg_color=COLOR["WARNING_BUTTON_COLOR"],
-                                                               text_color="black", command= self.change_role_user)
+                                                               text_color="black", command= self.change_password_user)
         self.change_password_account_button.grid(row = 6, column = 0, columnspan = 2, padx = 5, pady = 10)
 
         # OptionMenu hiển thị danh sách quyền hạn người dùng
@@ -228,7 +263,7 @@ class HomePage(customtkinter.CTkFrame):
         messagebox.showinfo("Thông báo", "Chức năng đang trong chế độ bảo trì! \nVui lòng thử lại sau.")
         return
     
-    def refresh_infor_all_user(self):
+    def get_infor_all_user(self):
         """
         Nút bấm lấy thông tin tài khoản người dùng và hiển thị lên treeview
         """
@@ -338,7 +373,7 @@ class HomePage(customtkinter.CTkFrame):
         Nút bấm kích hoạt tài khoản người dùng để cho phép hoạt động
         """
         # Hiển popup xác nhận lại yêu cầu kích hoạt với người dùng
-        result = messagebox.askokcancel("Thao tác tài khoản", f"Bạn có chắc chắn muốn kích hoạt hoặc khóa tài khoản người dùng: {self.username_user_current}")
+        result = messagebox.askokcancel("Kích hoạt/ khóa tài khoản", f"Bạn có chắc chắn muốn kích hoạt hoặc khóa tài khoản người dùng: {self.username_user_current}")
 
         if result:
             logger.info("Sử dụng chức năng kích hoạt tài khoản với người dùng: %s", self.username_user_current)
@@ -353,7 +388,7 @@ class HomePage(customtkinter.CTkFrame):
         try:
             result = self.db.activate_user(email= self.email_user_current, activate= activate)
 
-            if result:
+            if result["success"]:
                 self.after(0, self.hide_loading_popup)
                 self.after(0, lambda: messagebox.showinfo("Thành công", f"Tài khoản {self.username_user_current} đã được kích hoạt/ khóa tài khoản thành công"))
 
@@ -361,26 +396,32 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
                 logger.info("Đã kích hoạt/ khóa tài khoản: %s thành công", self.username_user_current)
+
+                # Cập nhật lại dữ liệu trên Treeview
+                self.after(0, self.get_infor_all_user)
             
             else:
                 self.after(0, self.hide_loading_popup)
-                self.after(0, lambda: messagebox.showerror("Lỗi kết nối", "Không thể kích hoạt/ khóa tài khoản người dùng. Thử lại sau."))
+                self.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"{result["message"]}.\nVui lòng thử lại sau."))
                 # Hủy kích hoạt nút
                 self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
 
         except Exception as e:
             self.after(0, self.hide_loading_popup)
-            self.after(0, lambda: messagebox.showerror("Lỗi kết nối", "Không thể kích hoạt/ khóa tài khoản người dùng. Thử lại sau."))
+            self.after(0, lambda err = e: messagebox.showerror("Lỗi kết nối", f"Không thể kích hoạt/ khóa tài khoản người dùng:{str(err)}.\nThử lại sau."))
             logger.error(f"Xảy ra lỗi trong lúc kích hoạt/ khóa tài khoản người dùng: {e}") 
             # Hủy kích hoạt nút
             self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
             self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
             self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
             self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
 
     def delete_account_user(self):
@@ -403,7 +444,7 @@ class HomePage(customtkinter.CTkFrame):
         try:
             result = self.db.delete_account_user(email= self.email_user_current)
 
-            if result:
+            if result["success"]:
                 self.after(0, self.hide_loading_popup)
                 self.after(0, lambda: messagebox.showinfo("Thành công", f"Tài khoản {self.username_user_current} đã được xóa khỏi CSDL."))
 
@@ -411,25 +452,31 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+
+                # Cập nhật lại dữ liệu trên Treeview
+                self.after(0, self.get_infor_all_user)
             
             else:
                 self.after(0, self.hide_loading_popup)
-                self.after(0, lambda: messagebox.showerror("Lỗi kết nối", "Không thể xóa tài khoản người dùng. Thử lại sau."))
+                self.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"{result["message"]}.\n Vui lòng thử lại sau."))
                 # Hủy kích hoạt nút
                 self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
 
         except Exception as e:
             self.after(0, self.hide_loading_popup)
-            self.after(0, lambda: messagebox.showerror("Lỗi kết nối", "Không thể xóa tài khoản người dùng. Thử lại sau."))
+            self.after(0, lambda err = e: messagebox.showerror("Lỗi kết nối", f"Không thể xóa tài khoản người dùng: {str(err)}.\nVui lòng thử lại sau."))
             logger.error(f"Xảy ra lỗi trong lúc xóa tài khoản người dùng: {e}") 
             # Hủy kích hoạt nút
             self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
             self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
             self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
             self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
 
     def change_role_user(self):
@@ -453,7 +500,7 @@ class HomePage(customtkinter.CTkFrame):
         try:
             result = self.db.change_role_user(email= self.email_user_current, privilege= privilege)
 
-            if result:
+            if result["success"]:
                 self.after(0, self.hide_loading_popup)
                 self.after(0, lambda: messagebox.showinfo("Thành công", f"Đã thay đổi quyền hạn {self.username_user_current}."))
 
@@ -461,25 +508,102 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+
+                # Cập nhật lại dữ liệu trên Treeview
+                self.after(0, self.get_infor_all_user)
             
             else:
                 self.after(0, self.hide_loading_popup)
-                self.after(0, lambda: messagebox.showerror("Lỗi kết nối", "Không thể thay đổi quyền hạn tài khoản người dùng. Thử lại sau."))
+                self.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"{result["message"]}.\nVui lòng thử lại sau."))
                 # Hủy kích hoạt nút
                 self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
 
         except Exception as e:
             self.after(0, self.hide_loading_popup)
-            self.after(0, lambda: messagebox.showerror("Lỗi kết nối", "Không thể kích hoạt/ khóa tài khoản người dùng. Thử lại sau."))
+            self.after(0, lambda err=e: messagebox.showerror("Lỗi kết nối", f"Không thể kích hoạt/ khóa tài khoản người dùng: {str(err)}.\nThử lại sau."))
             logger.error(f"Xảy ra lỗi trong lúc xóa tài khoản người dùng: {e}") 
             # Hủy kích hoạt nút
             self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
             self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
             self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+
+    def change_password_user(self):
+        """
+        Nút bấm thay đổi mật khẩu người dùng
+        """
+        # Hiển popup xác nhận lại yêu cầu kích hoạt với người dùng
+        result = messagebox.askokcancel("Thay đổi mật khẩu", f"Bạn có chắc chắn muốn thay đổi mật khẩu người dùng: {self.username_user_current}")
+
+        if result:
+            new_password = self.input_change_password.get()
+            new_password_again = self.input_change_password_again.get()
+
+            # Kiểm tra xem người dùng đã nhập mật khẩu mới hay chưa
+            if not new_password or not new_password_again:
+                messagebox.showerror("Lỗi nhập liệu", "Vui lòng nhập mật khẩu mới và xác nhận mật khẩu.")
+                return
+            # Kiểm tra xem mật khẩu mới và xác nhận mật khẩu có khớp nhau không
+            # Nếu không khớp thì hiển thị thông báo lỗi
+            if new_password != new_password_again:
+                messagebox.showerror("Lỗi nhập liệu", "Mật khẩu không khớp. Vui lòng nhập lại.")
+                return
+            
+            logger.info("Sử dụng chức năng thay đổi mật khẩu người dùng: %s", self.username_user_current)
+            self.show_loading_popup()
+            # Tạo luồng mới để cập nhật dữ liệu vào CSDL
+            threading.Thread(target=self.change_password_user_in_thread, args=(new_password,), daemon= True).start()
+    
+    def change_password_user_in_thread(self, new_password):
+        """
+        Thay đổi mật khẩu người dùng trong 1 luồng riêng
+        """
+        try:
+            result = self.db.update_password_user(email= self.email_user_current, password= new_password)
+
+            # Nếu kết quả là True thì cập nhật thành công
+            if result["success"]:
+                self.after(0, self.hide_loading_popup)
+                self.after(0, lambda: messagebox.showinfo("Thành công", f"Đã thay đổi mật khẩu cho tài khoản {self.username_user_current}."))
+
+                # Hủy kích hoạt nút
+                self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
+
+                # Cập nhật lại dữ liệu trên Treeview
+                self.after(0, self.get_infor_all_user)
+            
+            else:
+                self.after(0, self.hide_loading_popup)
+                self.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"{result["message"]}.\nVui lòng thử lại sau."))
+                
+                # Hủy kích hoạt nút
+                self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+
+        except Exception as e:
+            self.after(0, self.hide_loading_popup)
+            self.after(0, lambda err=e: messagebox.showerror("Lỗi kết nối", f"Không thể thay đổi mật khẩu tài khoản người dùng: {str(err)}.\nThử lại sau."))
+            logger.error(f"Xảy ra lỗi trong lúc thay đổi mật khẩu người dùng: {e}") 
+            
+            # Hủy kích hoạt nút
+            self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
             self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
 
     def show_loading_popup(self):
