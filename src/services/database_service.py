@@ -33,7 +33,7 @@ def get_odbc_drivers_for_sql_server():
 
 class My_Database:
     # def __init__(self, server_name="10.239.1.162", database_name="DB_QLNS_HR_APP", user_name="quannd", password="quannd"):
-    def __init__(self, server_name="172.31.99.130", database_name="DucQuanApp", user_name="ducquan_user", password="123456789"):
+    def __init__(self, server_name="localhost", database_name="DucQuanApp", user_name="ducquan_user", password="123456789"):
         """
         Khởi tạo đối tượng kết nối đến cơ sở dữ liệu với chuỗi kết nối.
         """
@@ -205,7 +205,7 @@ class My_Database:
                     # Kiểm tra xem có hàng nào được áp dụng không
                     if cursor.rowcount > 0:
                         response["success"] = True
-                        response["message"] = "Kích hoạt/hủy kích hoạt tài khoản thành công."
+                        response["message"] = f"Kích hoạt/hủy kích hoạt thành công người dùng có địa chỉ: {email}."
                     else:
                         response["success"] = False
                         response["message"] = "Không tìm thấy tài khoản hoặc không có tài khoản nào được kích hoạt."
@@ -373,8 +373,11 @@ class My_Database:
         """
         Xóa tài khoản người dùng có email truyền vào
         """
-        if not self._check_connection():
-            return False # Không thực hiện update nếu không có kết nối đến DB
+        # Biến trả kết quả
+        response = {
+            "success": False,
+            "message": ""
+        }
 
         # Bắt đầu một kết nối
         conn = self._connect()
@@ -391,24 +394,38 @@ class My_Database:
                     cursor.execute(delete_account_query, params_update)
                     conn.commit()
 
-                    logger.info(f"Đã xóa tài khoản {email} thành công!")
-                    return True
+                    # Kiểm tra xem có hàng nào được áp dụng không
+                    if cursor.rowcount > 0:
+                        response["success"] = True
+                        response["message"] = f"Xóa tài khoản thành công người dùng có địa chỉ: {email}."
+                    else:
+                        response["success"] = False
+                        response["message"] = f"Không có người dùng nào được xóa với địa chỉ: {email}"
                 
             except Exception as e:
                 # Nếu có lỗi, rollback toàn bộ transaction
                 conn.rollback()
-                logger.error(f"Lỗi khi xóa tài khoản người dùng người dùng {email}: {e}")
-                return False
+
+                response["success"] = False
+                response["message"] = f"Lỗi khi xóa tài khoản người dùng {email}: {e}"
             
             finally:
                 conn.close()
+        else:
+            response["success"] = False
+            response["message"] = f"Không thể kết nối tới CSDL"
+            
+        return response
 
     def change_role_user(self, privilege, email):
         """
         Cập nhật quyền hạn của người dùng
         """
-        if not self._check_connection():
-            return False # Không thực hiện update nếu không có kết nối đến DB
+       # Biến trả kết quả
+        response = {
+            "success": False,
+            "message": ""
+        }
 
         # Bắt đầu một kết nối
         conn = self._connect()
@@ -426,14 +443,25 @@ class My_Database:
                     cursor.execute(update_privilege_account_query, params_update)
                     conn.commit()
 
-                    logger.info(f"Đã cập nhật quyền hạn {email} thành {privilege}!")
-                    return True
-                
+                    # Kiểm tra xem có hàng nào được áp dụng không
+                    if cursor.rowcount > 0:
+                        response["success"] = True
+                        response["message"] = f"Cập nhật quyền hạn thành công cho người dùng {email}: {privilege}."
+                    else:
+                        response["success"] = False
+                        response["message"] = f"Không có người dùng nào được cập nhật quyền hạn mới với địa chỉ: {email}"
+
             except Exception as e:
                 # Nếu có lỗi, rollback toàn bộ transaction
                 conn.rollback()
-                logger.error(f"Lỗi khi thay đổi quyền hạn người dùng người dùng {email}: {e}")
-                return False
+                response["success"] = False
+                response["message"] = f"Lỗi khi cập nhật quyền hạn mới cho người dùng có địa chỉ {email}: {e}"
             
             finally:
                 conn.close()
+        
+        else:
+            response["success"] = False
+            response["message"] = f"Không thể kết nối tới CSDL"
+            
+        return response
