@@ -1,7 +1,7 @@
 # Chương trình phần mềm trên máy tính windows được xây dựng bằng Python  
 
 
-> [!INFO]  
+> [!NOTE]  
 > Tổng quan về phần mềm  
 
 ## 1.Phần mềm có chức năng đăng nhập trước khi sử dụng phần mềm  
@@ -41,13 +41,13 @@ Sau khi đăng nhập phần mềm thành công sẽ tiến vào trang chủ (n�
 Tại đây có thể `kích hoạt tài khoản`, `Xóa tài khoản`, `Thay đổi quyền hạn`, ...  
 
 
-> [!INFO]  
+> [!NOTE]  
 > Lập trình phần mềm với Python  
 
 > [!IMPORTANT]  
-> Trước khi đi vào lập trình phần mềm cần lưu ý một số điều sau  
-> Python: từ 3.12 trở lên  
-> Database: Sử dụng SQL Server  
+> **Trước khi đi vào lập trình phần mềm cần lưu ý một số điều sau**  
+> **Python: từ 3.12 trở lên**  
+> **Database: Sử dụng SQL Server**  
 
 # 1. Tạo môi trường ảo
 
