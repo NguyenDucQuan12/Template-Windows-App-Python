@@ -145,16 +145,6 @@ class HomePage(customtkinter.CTkFrame):
         
         style.map("Treeview.Heading", background=[('active', '#3484F0')])  # Màu nền của tiêu đề khi hover
 
-        # Đặt màu nền cho tiêu đề cột
-        style.configure("Treeview.Row",
-                        background="#e81091",  # Màu nền của tiêu đề
-                        foreground="white",    # Màu chữ của tiêu đề
-                        relief="flat",
-                        bordercolor="#ffc61e",
-                        borderwidth = 10, 
-                        font=("Time New Roman", 100)  # Cập nhật phông chữ cho tiêu đề
-                        )
-
         # Tạo Treeview
         treeview = ttk.Treeview(
             parent,
