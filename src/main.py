@@ -453,6 +453,11 @@ def run_app():
         app = App()
 # Ví dụ chạy thử:
 if __name__ == "__main__":
+
+    # Tắt hỗ trợ HIGH DPI của customtkinter, tuy nhiên nếu kích thước màn hình lớn hơn 100% khiến giao diện bị mờ
+    # chức năng này tự động bật, và có thể làm co giãn kích thước theo độ phân giải màn hình, cũng gay ra lỗi chữ bé hơn trong các treeview được đặt vào frame
+    # ctk.deactivate_automatic_dpi_awareness()
+
     # Kiểm tra xem ứng dụng đã chạy chưa, nếu đã chạy thì không mở lại
     run_app()
 
