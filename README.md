@@ -139,7 +139,7 @@ INSERT INTO Users
     Expired_OTP,
     Status
 )
-VALUE (
+VALUES (
     N'Nguyễn Đức Quân',
     'nguyenducquan2001@gmail.com',
     '152a4a4f24e8481810b9b01c1ef148034f38c17fb40175e29201b767906558f455032735d0f144f052bd10bac553191dbd02c8d3d3c594023c8517ea72f47955',
