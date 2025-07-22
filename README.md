@@ -1,6 +1,46 @@
+# Chương trình phần mềm trên máy tính windows được xây dựng bằng Python
+
+> [!INFO]  
+> Tổng quan về phần mềm  
+
+## 1.Phần mềm có chức năng đăng nhập trước khi sử dụng phần mềm.  
+
+![image](assets/github/images/login_screen_windows.png)
+
+> [!TIP]
+> 💡 Tài khoản đăng nhập mặc định ** tên đăng nhập: Test, mật khẩu: Test**  
+
+Phần mềm đươc phân quyền với 3 mức độ: `Admin`, `User`, `Guest`  
+
+- `Admin`: Được truy cập toàn bộ chức năng  
+- `User`: Được truy cập toàn bộ chức năng (Ngoại trừ trang chủ)  
+- `Guest`: Giới hạn truy cập một số chức năng cụ thể  
+
+## 1.1 Chức năng tạo tài khoản mới
+
+Nếu chưa có tài khoản thì có thể sử dụng chức năng tạo tài khoản mới để đăng nhập.  
+
+![image](assets/github/images/create_account_screen_windows.png)  
+
+Sau khi tạo tài khoản xong vẫn `chưa thể đăng nhập` được trừ khi được tài khoản có quyền `admin` kích hoạt tài khoản cho từ tab `Trang chủ`. Xem thêm [tại đây]()  
+
+## 1.2 Chức năng quên mật khẩu  
+
+Khi bạn đã có tài khoản sử dụng nhưng `quên mật khẩu` thì có thể sử dụng chức năng quên mật khẩu từ trang đăng nhập.  
+
+![image](assets/github/images/forgot_password_screen_windows.png)
+
+Yêu cầu người dùng nhập email đã đăng ký và ấn nút `Lấy OTP` để nhận 1 mã 6 chữ số thì mới có thể thay đổi mật khẩu. Mã OTP sẽ được gửi tới mail đã đăng ký, thời hạn của mã OTP sẽ là 5 phút.  
+
+## 2. Trang chủ
+Sau khi đăng nhập phần mềm thành công sẽ tiến vào trang chủ (nếu tài khoản là admin)  
+
+![image](assets/github/images/home_screen_windows.png)
+
+Tại đây có thể `kích hoạt tài khoản`, `Xóa tài khoản`, `Thay đổi quyền hạn`, ...  
+
 > [!IMPORTANT]  
 > ## Yêu cầu phiên bản Python từ 3.12 trở lên
-
 
 # Tạo môi trường ảo
 
