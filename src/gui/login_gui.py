@@ -17,9 +17,9 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJECT_DIR)
 
 # Các thư viện tự tạo import từ đây
-from utils.resource import resource_path
-from utils.send_mail import InternalEmailSender
+from services.email_service import InternalEmailSender
 from services.database_service import My_Database
+from utils.resource import resource_path
 from services.hash import Hash
 from utils.loading_gif import LoadingGifLabel
 from utils.constants import FILE_PATH
@@ -272,7 +272,7 @@ class LoginWindow(ctk.CTkToplevel):
             self.after(0, lambda: messagebox.showinfo("Đã gửi mã OTP", "Mã OTP đã được gửi thành công. Hãy kiểm tra email. \nLưu ý mã OTP chỉ tồn tại 10 phút."))
 
         else:
-            self.after(0, lambda: messagebox.showwarning("Đã gửi mã OTP", "Không thể gửi mã OTP đến email người dùng. Hãy thử lại."))
+            self.after(0, lambda: messagebox.showwarning("Lỗi khi gửi mã OTP", "Không thể gửi mã OTP đến email người dùng. Hãy thử lại."))
 
     def reset_passwword(self):
         """
@@ -496,7 +496,7 @@ class LoginWindow(ctk.CTkToplevel):
             # Lưu thông tin tài khoản mới vào CSDL
             create_new_user_result = self.database.create_new_user(username= new_account["username"], email= new_account["email"], password= new_account["password"])
             if create_new_user_result["success"]:
-                 # Gửi email thông báo đã tạo tài khoản thành công
+                # Gửi email thông báo đã tạo tài khoản thành công
                 self.email_sender.send_email_for_new_account(to_email= new_account["email"], name= new_account["username"], website_name= self.software_name)
                 # Đóng cửa sổ loading
                 self.after(0, self.hide_loading_popup)

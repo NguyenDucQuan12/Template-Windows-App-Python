@@ -1,6 +1,5 @@
 import customtkinter
 from tkinter import ttk, messagebox
-import tkinter as tk
 import threading
 import queue
 import logging
@@ -12,11 +11,11 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJECT_DIR)
 
 from services.database_service import My_Database
+from services.email_service import InternalEmailSender
 
 from utils.constants import *
 from utils.loading_gif import LoadingGifLabel
 from utils.resource import resource_path
-from utils.send_mail import InternalEmailSender
 
 from schedule_work.schedule_work import Schedule_Auto
 
