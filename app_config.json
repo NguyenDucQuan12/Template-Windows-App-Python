@@ -1,0 +1,19 @@
+{
+  "connection": {
+    "driver": "ODBC Driver 18 for SQL Server",
+    "server": "localhost",
+    "auth_mode": "windows",
+    "username": null
+  },
+  "storage": {
+    "backup_dir": "E:/SQL_Backup\\"
+  },
+  "databases": [
+    "Docker_DB"
+  ],
+  "schedule": {
+    "full": "0 0 * * 0",
+    "diff": "30 0 * * 1-6",
+    "log": "*/15 * * * *"
+  }
+}
