@@ -57,6 +57,7 @@ COLOR = {
 # Các tên của navigation
 HOME_NAV = "Trang chủ"
 CHAT_NAV = "Trò chuyện"
+DATABASE_NAV = "Cơ sở dữ liệu"
 
 # Quyền hạn
 PERMISSION = {
@@ -82,6 +83,8 @@ IMAGE = {
     "HOME_NAVIGATION_DARK_IMG": "assets\\images\\navigation\\home_dark.png",
     "CHAT_NAVIGATION_LIGHT_IMG": "assets\\images\\navigation\\chat_light.png",
     "CHAT_NAVIGATION_DARK_IMG": "assets\\images\\navigation\\chat_dark.png",
+    "DATABASE_NAVIGATION_LIGHT_IMG": "assets\\images\\navigation\\database_light.png",
+    "DATABASE_NAVIGATION_DARK_IMG": "assets\\images\\navigation\\database_dark.png",
 }
 
 
