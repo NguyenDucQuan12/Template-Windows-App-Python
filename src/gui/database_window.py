@@ -26,10 +26,8 @@ from utils.app_config import load_config, save_config
 from gui.backup_page import (
     DashboardFrame,
     ConnectionFrame,
-    StorageFrame,
     DatabasesFrame,
     ScheduleFrame,
-    ManualBackupFrame,
     RestoreFrame,
     LogsFrame,
 )
@@ -102,10 +100,8 @@ class DatabasePage(ctk.CTkFrame):
         self._nav_defs = [
             ("Dashboard", "Dashboard"),
             ("Kết nối", "Connection"),
-            ("Lưu trữ", "Storage"),
             ("Database", "Databases"),
             ("Lịch Backup", "Schedule"),
-            ("Backup thủ công", "ManualBackup"),
             ("Restore", "Restore"),
             ("Logs", "Logs"),
         ]
@@ -169,14 +165,10 @@ class DatabasePage(ctk.CTkFrame):
             page = DashboardFrame(self.content, self)
         elif key == "Connection":
             page = ConnectionFrame(self.content, self)
-        elif key == "Storage":
-            page = StorageFrame(self.content, self)
         elif key == "Databases":
             page = DatabasesFrame(self.content, self)
         elif key == "Schedule":
             page = ScheduleFrame(self.content, self)
-        elif key == "ManualBackup":
-            page = ManualBackupFrame(self.content, self)
         elif key == "Restore":
             page = RestoreFrame(self.content, self)
         elif key == "Logs":
