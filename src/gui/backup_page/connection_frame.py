@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 # ----------------- helpers -----------------
 
 def _build_conn_str(driver: str, server: str, auth_mode: str, user: Optional[str], pwd: Optional[str], timeout: int = 8) -> str:
+    """
+    Tạo chuỗi kết nối với 2 tùy chọn đăng nhập là sử dụng window hoặc tài khoản đăng nhập  
+    """
 
     if auth_mode != "sql":
         return (
@@ -51,12 +54,13 @@ class ConnectionFrame(ctk.CTkFrame):
 
         ctk.CTkLabel(self, text="Kết nối SQL Server", font=ctk.CTkFont(size=18, weight="bold")).grid(row=0, column=0, padx=16, pady=(16,8), sticky="w")
 
-        # Form bên trái
+        # Form thông tin đăng nhập bên trái
         form = ctk.CTkFrame(self)
         form.grid(row=1, column=0, padx=16, pady=8, sticky="nsew")
         form.grid_columnconfigure(1, weight=1)
+        form.grid_rowconfigure(6, weight=1)
 
-        # Driver
+        # Driver label
         ctk.CTkLabel(form, text="ODBC Driver:").grid(row=0, column=0, padx=(12,8), pady=6, sticky="w")
         drivers = self.owner.odbc_drivers or get_odbc_drivers_for_sql_server()
         self.cbo_driver = ctk.CTkComboBox(form, values=drivers, width=260)
@@ -94,8 +98,8 @@ class ConnectionFrame(ctk.CTkFrame):
         self.btn_connect = ctk.CTkButton(form, text="Kết nối", command=self._do_connect)
         self.btn_connect.grid(row=5, column=0, columnspan=2, padx=8, pady=(10,6), sticky="ew")
 
-        self.lbl_status = ctk.CTkLabel(form, text="Chưa kết nối", text_color="#f59e0b")
-        self.lbl_status.grid(row=6, column=0, columnspan=2, padx=8, pady=(4,12), sticky="w")
+        self.lbl_status = ctk.CTkTextbox(form, width=1, height=1, text_color="#f59e0b", wrap = "word")
+        self.lbl_status.grid(row=6, column=0, columnspan=2, padx=8, pady=(4,12), sticky="nsew")
 
         # Khu danh sách DB bên phải
         right = ctk.CTkFrame(self)
@@ -152,7 +156,11 @@ class ConnectionFrame(ctk.CTkFrame):
             return
 
         conn_str = _build_conn_str(driver, server, mode, user, pwd)
-        self.lbl_status.configure(text="Đang kết nối...", text_color="#f59e0b")
+        self.lbl_status.configure(state="normal", text_color="#f59e0b")
+        self.lbl_status.delete("0.0", "end")
+        self.lbl_status.insert("end", "Đang kết nối..." + "\n")
+        self.lbl_status.see("end")
+        self.lbl_status.configure(state="disabled")
         self.btn_connect.configure(state="disabled")
 
         def _connect():
@@ -169,13 +177,21 @@ class ConnectionFrame(ctk.CTkFrame):
                 })
                 self.owner.save_config(silent = True)  # ghi file JSON
 
-                self.lbl_status.configure(text="Đã kết nối", text_color="#22c55e")
+                self.lbl_status.configure(state="normal", text_color="#22c55e")
+                self.lbl_status.delete("0.0", "end")
+                self.lbl_status.insert("end", f"Đã kết nối" + "\n")
+                self.lbl_status.see("end")
+                self.lbl_status.configure(state="disabled")
                 self.btn_refresh.configure(state="normal")
                 self.btn_add.configure(state="normal")
                 self._refresh_dbs()
             except Exception as e:
                 logger.exception("Connect failed: %s", e)
-                self.lbl_status.configure(text=f"Kết nối thất bại: {e}", text_color="#ef4444")
+                self.lbl_status.configure(state="normal", text_color="#ef4444")
+                self.lbl_status.delete("0.0", "end")
+                self.lbl_status.insert("end", f"Kết nối thất bại: {e}" + "\n")
+                self.lbl_status.see("end")
+                self.lbl_status.configure(state="disabled")
             finally:
                 self.btn_connect.configure(state="normal")
 
