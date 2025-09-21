@@ -1,19 +1,38 @@
 {
   "connection": {
-    "driver": "ODBC Driver 18 for SQL Server",
+    "driver": "ODBC Driver 17 for SQL Server",
     "server": "localhost",
     "auth_mode": "windows",
     "username": null
   },
   "storage": {
-    "backup_dir": "E:/SQL_Backup\\"
+    "backup_dir": null
   },
   "databases": [
+    "Docker",
     "Docker_DB"
   ],
   "schedule": {
     "full": "0 0 * * 0",
     "diff": "30 0 * * 1-6",
     "log": "*/15 * * * *"
+  },
+  "per_db": {
+    "Docker": {
+      "backup_dir": null,
+      "schedule": {
+        "full": "0 0 * * 0",
+        "diff": "30 0 * * 1-6",
+        "log": "*/15 * * * *"
+      }
+    },
+    "Docker_DB": {
+      "backup_dir": "D:/Project/HR_app/assets\\",
+      "schedule": {
+        "full": "0 0 * * 0",
+        "diff": "30 0 * * 1-6",
+        "log": "*/15 * * * *"
+      }
+    }
   }
 }
