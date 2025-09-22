@@ -78,7 +78,7 @@ class DatabasePage(ctk.CTkFrame):
         self._build_content()
 
         # Mặc định mở Dashboard khi vào màn hình chính
-        self.show_page("Dashboard")
+        self.show_page("Connection")
 
     # ======================================================================
     # Sidebar (bên trái)
@@ -98,8 +98,8 @@ class DatabasePage(ctk.CTkFrame):
 
         # Danh sách các page: (text hiển thị, key nội bộ)
         self._nav_defs = [
-            ("Dashboard", "Dashboard"),
             ("Kết nối", "Connection"),
+            ("Dashboard", "Dashboard"),
             ("Database", "Databases"),
             ("Lịch Backup", "Schedule"),
             ("Restore", "Restore"),
