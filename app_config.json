@@ -9,8 +9,8 @@
     "backup_dir": null
   },
   "databases": [
-    "Docker_DB",
-    "MBO_DB"
+    "Docker",
+    "Docker_DB"
   ],
   "schedule": {
     "full": "0 0 * * 0",
@@ -19,7 +19,7 @@
   },
   "per_db": {
     "Docker": {
-      "backup_dir": null,
+      "backup_dir": "D:/Backup\\",
       "schedule": {
         "full": "0 0 * * 0",
         "diff": "30 0 * * 1-6",
@@ -28,7 +28,12 @@
       "scheduler": {
         "instance": ".\\SQLEXPRESS",
         "stripes": 2,
-        "ps1_path": "C:\\Scripts\\Backup-Db.ps1"
+        "ps1_path": "C:\\Scripts\\Backup-Db.ps1",
+        "run_always": true,
+        "user": "ADMIN",
+        "pass": "120201",
+        "sql_user": "",
+        "sql_pass": ""
       }
     },
     "Docker_DB": {
