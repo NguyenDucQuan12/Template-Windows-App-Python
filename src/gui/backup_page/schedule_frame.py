@@ -74,7 +74,7 @@ def _safe_time(minute: str, hour: str) -> str:
 def cron_to_schtasks_args(expr: str) -> Dict[str, str]:
     """
     Ánh xạ CRON (5 trường) sang tham số schtasks:
-      - Mỗi N phút:  */N * * * *  → /SC MINUTE /MO N /DU 24:00 /ST 00:00
+      - Mỗi N phút:  */N * * * *  → /SC MINUTE /MO N /DU 24:00 /ST 00:01
       - Hằng ngày   :   M H * * *  → /SC DAILY  /ST H:M
       - Hằng tuần   :   M H * * D  → /SC WEEKLY /D Dlist /ST H:M
       - Hàng tháng  :   M H DOM * * → /SC MONTHLY /D DOM /ST H:M (chỉ 1 ngày)
@@ -88,7 +88,7 @@ def cron_to_schtasks_args(expr: str) -> Dict[str, str]:
             if n <= 0: raise ValueError
         except Exception:
             raise ValueError("CRON không hợp lệ: '*/N * * * *' yêu cầu N > 0.")
-        return {"type": "MINUTE", "st": "00:00", "mo": str(n), "du": "24:00"}
+        return {"type": "MINUTE", "st": "00:01", "mo": str(n), "du": "24:00"}
 
     # Hằng tuần
     dnames = _dow_to_names(dow)
@@ -168,7 +168,7 @@ class ScheduleFrame(ctk.CTkFrame):
         self.cbo_db = ctk.CTkComboBox(wrap, values=values, width=260, command=lambda _: self._on_change_db())
         self.cbo_db.grid(row=0, column=1, padx=8, pady=8, sticky="w")
 
-        ctk.CTkButton(wrap, text="↻ Nạp danh sách", command=self._reload_db_list)\
+        ctk.CTkButton(wrap, text="↻ Tải danh sách CSDL", command=self._reload_db_list)\
             .grid(row=0, column=2, padx=8, pady=8, sticky="w")
 
     # --------------------- Khối UI: thư mục lưu trữ ---------------------
@@ -182,7 +182,7 @@ class ScheduleFrame(ctk.CTkFrame):
         self.ent_dir = ctk.CTkEntry(wrap, width=460, placeholder_text=r"VD: E:\SQL_Backup\ hoặc \\server\share\backup")
         self.ent_dir.grid(row=0, column=1, padx=8, pady=8, sticky="w")
 
-        ctk.CTkButton(wrap, text="Chọn (cục bộ)", command=self._choose_local_dir)\
+        ctk.CTkButton(wrap, text="Chọn thư mục", command=self._choose_local_dir)\
             .grid(row=0, column=2, padx=8, pady=8, sticky="w")
 
         ctk.CTkButton(wrap, text="Kiểm tra quyền ghi từ SQL Server", command=self._test_write_perm_model)\
@@ -208,16 +208,16 @@ class ScheduleFrame(ctk.CTkFrame):
         ctk.CTkLabel(wrap, text="Lịch LOG (CRON):").grid(row=2, column=0, padx=(12, 8), pady=6, sticky="e")
         self.ent_log  = ctk.CTkEntry(wrap, width=320); self.ent_log.grid(row=2, column=1, padx=8, pady=6, sticky="w")
 
-        ctk.CTkButton(wrap, text="💾 Lưu lịch (tham khảo)", command=self._save_schedule)\
+        ctk.CTkButton(wrap, text="💾 Lưu lịch", command=self._save_schedule)\
             .grid(row=3, column=1, padx=8, pady=(6, 8), sticky="w")
 
         cron_note = (
             "CRON 5 trường: phút giờ ngày-tháng tháng thứ\n"
             "Ví dụ:\n"
-            "  0 0 * * 0      → Chủ nhật 00:00 (FULL)\n"
-            "  30 0 * * 1-6   → T2–T7 00:30 (DIFF)\n"
-            "  */15 * * * *   → Mỗi 15 phút (LOG)\n"
-            "  0 2 1 * *      → Mùng 1 hàng tháng 02:00"
+            "      0 0 * * 0      → Chủ nhật 00:00 (FULL)\n"
+            "      30 0 * * 1-6   → T2–T7 00:30 (DIFF)\n"
+            "      */15 * * * *   → Mỗi 15 phút (LOG)\n"
+            "      0 2 1 * *      → Mùng 1 hàng tháng vào lúc 02:00"
         )
         ctk.CTkLabel(wrap, text=cron_note, justify="left", anchor="nw")\
             .grid(row=0, column=2, rowspan=4, padx=12, pady=6, sticky="nsew")
@@ -256,10 +256,10 @@ class ScheduleFrame(ctk.CTkFrame):
         ctk.CTkLabel(wrap, text="Số strips (file):").grid(row=1, column=2, padx=(12, 8), pady=6, sticky="e")
         self.spn_stripes = ctk.CTkEntry(wrap, width=80); self.spn_stripes.grid(row=1, column=3, padx=8, pady=6, sticky="w")
 
-        ctk.CTkLabel(wrap, text="Lưu script PS1 vào:").grid(row=2, column=0, padx=(12, 8), pady=6, sticky="e")
+        ctk.CTkLabel(wrap, text="Lưu script powershell vào:").grid(row=2, column=0, padx=(12, 8), pady=6, sticky="e")
         self.ent_ps1 = ctk.CTkEntry(wrap, width=420, placeholder_text=r"VD: C:\Scripts\Backup-Db.ps1")
         self.ent_ps1.grid(row=2, column=1, columnspan=2, padx=8, pady=6, sticky="w")
-        ctk.CTkButton(wrap, text="Chọn...", command=self._choose_ps1_path).grid(row=2, column=3, padx=8, pady=6, sticky="w")
+        ctk.CTkButton(wrap, text="Thay đổi vị trí lưu", command=self._choose_ps1_path).grid(row=2, column=3, padx=8, pady=6, sticky="w")
 
         # Run whether user... (mặc định True, không cho tắt để đáp ứng yêu cầu)
         self.chk_run_always_var = ctk.BooleanVar(value=True)
@@ -269,17 +269,17 @@ class ScheduleFrame(ctk.CTkFrame):
             variable=self.chk_run_always_var
         )
         cb.grid(row=3, column=0, columnspan=2, padx=8, pady=(0, 8), sticky="w")
-        cb.configure(state="disabled")  # Không cho tắt theo yêu cầu
+        cb.configure(state="disabled")  # Không cho tắt 
 
         # User/Pass của Windows (bắt buộc khi dùng run whether...)
-        ctk.CTkLabel(wrap, text="User (DOMAIN\\User hoặc .\\User):").grid(row=4, column=0, padx=(12, 8), pady=6, sticky="e")
+        ctk.CTkLabel(wrap, text="User (DOMAIN\\User hoặc User):").grid(row=4, column=0, padx=(12, 8), pady=6, sticky="e")
         self.ent_user = ctk.CTkEntry(wrap, width=240); self.ent_user.grid(row=4, column=1, padx=8, pady=6, sticky="w")
 
         ctk.CTkLabel(wrap, text="Password:").grid(row=4, column=2, padx=(12, 8), pady=6, sticky="e")
         self.ent_pass = ctk.CTkEntry(wrap, width=180, show="*"); self.ent_pass.grid(row=4, column=3, padx=8, pady=6, sticky="w")
 
         # SQL Auth (tuỳ chọn) – dùng khi tài khoản Windows KHÔNG có quyền trên SQL
-        ctk.CTkLabel(wrap, text="SQL User (tùy chọn):").grid(row=5, column=0, padx=(12, 8), pady=6, sticky="e")
+        ctk.CTkLabel(wrap, text="SQL User (khi tài khoản windows ko có quyền đăng nhập SQL Server):").grid(row=5, column=0, padx=(12, 8), pady=6, sticky="e")
         self.ent_sql_user = ctk.CTkEntry(wrap, width=240); self.ent_sql_user.grid(row=5, column=1, padx=8, pady=6, sticky="w")
 
         ctk.CTkLabel(wrap, text="SQL Pass:").grid(row=5, column=2, padx=(12, 8), pady=6, sticky="e")
@@ -287,16 +287,16 @@ class ScheduleFrame(ctk.CTkFrame):
 
         # Nút thao tác
         rowb = 6
-        ctk.CTkButton(wrap, text="✍️ Tạo file PS1", command=self._generate_ps1)\
+        ctk.CTkButton(wrap, text="✍️ Tạo file script", command=self._generate_ps1)\
             .grid(row=rowb, column=1, padx=8, pady=(8, 8), sticky="w")
         ctk.CTkButton(wrap, text="🔍 Kiểm tra task", command=self._check_tasks)\
             .grid(row=rowb, column=2, padx=8, pady=(8, 8), sticky="w")
         ctk.CTkButton(wrap, text="📋 Hiển thị lệnh tạo (copy chạy Admin)", command=self._show_commands)\
             .grid(row=rowb, column=3, padx=8, pady=(8, 8), sticky="w")
 
-        ctk.CTkButton(wrap, text="🛡️ Tạo schtasks (tự nâng quyền)", command=self._create_tasks_elevated)\
+        ctk.CTkButton(wrap, text="🛡️ Tạo schtasks (yêu cầu quyền Admin)", command=self._create_tasks_elevated)\
             .grid(row=rowb+1, column=1, padx=8, pady=(0, 8), sticky="w")
-        ctk.CTkButton(wrap, text="🗑️ Xóa task (tự nâng quyền)", command=self._delete_tasks_elevated)\
+        ctk.CTkButton(wrap, text="🗑️ Xóa task (yêu cầu quyền Admin)", command=self._delete_tasks_elevated)\
             .grid(row=rowb+1, column=2, padx=8, pady=(0, 8), sticky="w")
 
     # ============================ DB selection ============================

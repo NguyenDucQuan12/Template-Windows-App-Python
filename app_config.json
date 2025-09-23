@@ -1,6 +1,6 @@
 {
   "connection": {
-    "driver": "ODBC Driver 17 for SQL Server",
+    "driver": "ODBC Driver 18 for SQL Server",
     "server": "localhost",
     "auth_mode": "windows",
     "username": null
@@ -9,7 +9,6 @@
     "backup_dir": null
   },
   "databases": [
-    "Docker",
     "Docker_DB"
   ],
   "schedule": {
@@ -18,44 +17,7 @@
     "log": "*/15 * * * *"
   },
   "per_db": {
-    "Docker": {
-      "backup_dir": "D:/Backup\\",
-      "schedule": {
-        "full": "0 0 * * 0",
-        "diff": "30 0 * * 1-6",
-        "log": "*/15 * * * *"
-      },
-      "scheduler": {
-        "instance": ".\\SQLEXPRESS",
-        "stripes": 2,
-        "ps1_path": "C:\\Scripts\\Backup-Db.ps1",
-        "run_always": true,
-        "user": "ADMIN",
-        "pass": "120201",
-        "sql_user": "",
-        "sql_pass": ""
-      }
-    },
     "Docker_DB": {
-      "backup_dir": "E:/share\\",
-      "schedule": {
-        "full": "0 0 * * 0",
-        "diff": "30 0 * * 1-6",
-        "log": "*/15 * * * *"
-      },
-      "scheduler": {
-        "instance": ".\\SQLEXPRESS",
-        "stripes": 4,
-        "ps1_path": "E:/share/Backup-Db.ps1",
-        "run_always": true,
-        "user": "Server_Quan_IT",
-        "pass": "238299",
-        "run_system": false,
-        "sql_user": "",
-        "sql_pass": ""
-      }
-    },
-    "MBO_DB": {
       "backup_dir": "E:/SQL_Backup\\",
       "schedule": {
         "full": "0 0 * * 0",
@@ -64,12 +26,13 @@
       },
       "scheduler": {
         "instance": ".\\SQLEXPRESS",
-        "stripes": 2,
+        "stripes": 4,
         "ps1_path": "C:\\Scripts\\Backup-Db.ps1",
-        "run_always": false,
-        "user": "",
-        "pass": "",
-        "run_system": false
+        "run_always": true,
+        "user": "Server_Quan_IT",
+        "pass": "238299",
+        "sql_user": "",
+        "sql_pass": ""
       }
     }
   }
