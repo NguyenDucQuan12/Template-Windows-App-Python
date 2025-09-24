@@ -6,6 +6,9 @@
 # Software Name: Tên phần mềm
 # Software Description: Miêu tả chi tiết về phần mềm
 # Note: Một số lời nói khác
+# Khi sử dụng code này, vui lòng tôn trọng chủ sở hữu bằng cách giữ nguyên phần mô tả Author, Date, Description.  
+# Nếu phát hiện các lỗi liên quan đến code, vui lòng liên hệ tác giả để được hỗ trợ, hoặc bạn có thể tự sửa lỗi và đóng góp cho cộng đồng.
+# Mọi hành vi sao chép, sử dụng lại code này mà không ghi rõ nguồn gốc đều không được chấp nhận.
 # =================================================================================
 
 import customtkinter as ctk    # pip install customtkinter
@@ -43,7 +46,7 @@ Lưu ý có thêm tham số: force = True bởi vì xung đột giữa các trì
 Nếu đối số từ khóa này được chỉ định là True, mọi trình xử lý hiện có được gắn vào bộ ghi nhật ký gốc sẽ bị xóa và
 đóng trước khi thực hiện cấu hình như được chỉ định bởi các đối số khác.
 Đối với file main sẽ dùng: logger = logging.getLogger()
-Còn các file khác sẽ dùng: logger = logging.getLogger(__name__) thì sẽ tự động cùng lưu vào 1 file, cùng 1 định dạng nhuw tệp main.
+Còn các file khác sẽ dùng: logger = logging.getLogger(__name__) thì sẽ tự động cùng lưu vào 1 file, cùng 1 định dạng như cấu hình ở tệp main.
 """
 
 # Khởi tạo logger
@@ -86,12 +89,13 @@ else:
 # Khai báo type cho lớp Frame (CustomTkinter Frame)
 CTkFrameType = ctk.CTkFrame
 
+# Tạo cấu trúc cho các mục điều hướng
 @dataclass
 class NavItem:
     name: str                       # Tên hiển thị (HOME_NAV / CHAT_NAV / DATABASE_NAV)
-    icon_light: str                 # key ảnh light trong IMAGE[...]
-    icon_dark: str                  # key ảnh dark  trong IMAGE[...]
-    required_permissions: tuple     # quyền được phép truy cập
+    icon_light: str                 # key ảnh light trong IMAGE[...] ở tệp constants.py
+    icon_dark: str                  # key ảnh dark  trong IMAGE[...] ở tệp constants.py
+    required_permissions: tuple     # quyền được phép truy cập đối với mục này
     frame_class: Optional[Type[CTkFrameType]]  # Lớp frame sẽ tạo khi cần (lazy)
 
 
@@ -105,11 +109,11 @@ class App(ctk.CTk):
         self.geometry("1600x800")
         self.withdraw() # Ẩn cửa sổ chính trước khi đăng nhập
 
-        # Thiết lập giao diện có định dạng 1x2 (1 hàng 2 cột) và tự động chiếm các phần thừa
+        # Thiết lập giao diện có hàng 0 và cột thứ 1 tự động co giãn theo kích thước cửa sổ
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
 
-        # Khai báo các button ở mục điều hướng bên trái
+        # Khai báo các button ở mục điều hướng bên trái, khi ấn vào sẽ hiển thị frame tương ứng bên phải
         self.nav_items: Dict[str, NavItem] = {
             HOME_NAV: NavItem(
                 name=HOME_NAV,
@@ -204,7 +208,7 @@ class App(ctk.CTk):
                 fg_color="transparent",
                 text_color=("gray10", "gray90"),
                 hover_color=("gray70", "gray30"),
-                command=lambda n=item.name: self.show_nav(n)     # 1 handler chung
+                command=lambda n=item.name: self.show_nav(n)     # n là tên nav (HOME_NAV / CHAT_NAV / DATABASE_NAV) lấy từ item.name
             )
 
             # Chưa biết quyền vẫn render; sau login sẽ ẩn/hiện (enable/disable)
@@ -512,7 +516,7 @@ def run_app():
 if __name__ == "__main__":
 
     # Tắt hỗ trợ HIGH DPI của customtkinter, tuy nhiên nếu kích thước màn hình lớn hơn 100% khiến giao diện bị mờ
-    # chức năng này tự động bật, và có thể làm co giãn kích thước theo độ phân giải màn hình, cũng gay ra lỗi chữ bé hơn trong các treeview được đặt vào frame
+    # chức năng này tự động bật, và có thể làm co giãn kích thước theo độ phân giải màn hình, cũng gây ra lỗi chữ bé hơn trong các treeview được đặt vào frame
     # ctk.deactivate_automatic_dpi_awareness()
 
     # Kiểm tra xem ứng dụng đã chạy chưa, nếu đã chạy thì không mở lại
