@@ -4,7 +4,7 @@
 > [!NOTE]  
 > Tổng quan về phần mềm  
 
-## 1.Phần mềm có chức năng đăng nhập trước khi sử dụng phần mềm  
+## 1. Phần mềm có chức năng đăng nhập trước khi sử dụng phần mềm  
 
 ![image](assets/github/images/login_screen_windows.png)
 
@@ -345,6 +345,46 @@ WHERE
     ob.name = 'Users';  -- Tên bảng hoặc đối tượng bạn muốn kiểm tra
 ```
 
+# 3. Tạo 1 navigation mới
+
+Ví dụ thêm 1 navigation có tên là `Cơ sở dữ liệu`, ta sẽ chỉnh sửa như sau.  
+
+## 3.1 Đặt tên và hình ảnh icon của navigation mới
+
+Ta tạo 1 tên mới cho navigation và các icon tương ứng với nó trong tệp [constants](src/utils/constants.py). Tương ứng ở vị trí tên và image như hình ảnh dưới.  
+
+![image](assets/github/images/create_new_name_navigation.png)
+
+## 3.2 Thêm nút bấm vào navigation
+
+Sau khi đặt tên và có hình ảnh tương ứng, ta thêm nó vào hàm `__init__` của `App` [tại đây](src/main.py).  
+
+![image](assets/github/images/add_new_navigation.png)  
+
+Với cấu trúc cho mỗi navigation như sau:  
+```python
+DATABASE_NAV: NavItem(
+    name=DATABASE_NAV,
+    icon_light="DATABASE_NAVIGATION_LIGHT_IMG",
+    icon_dark ="DATABASE_NAVIGATION_DARK_IMG",
+    required_permissions=(PERMISSION["ADMIN"], PERMISSION["USER"]),
+    frame_class=DatabasePage
+)
+```
+
+Trong đó:  
+
+- `DATABASE_NAV`: Là tên mà ta đã khai báo trong tệp `contanst.py`  
+- `icon_light - icon_dark`: Là 2 hình ảnh nút bấm cho navigation này tương ứng với chế độ sáng và tối  
+- `required_permissions`: Là 1 danh sách các quyền hạn có thể được truy cập vào navigation này, những người có quyền hạn ko nằm ở đây sẽ ko thể truy cập  
+- `frame_class`: Là 1 class chứa toàn bộ nội dung của navigation này, khi người dùng click vào thì nó sẽ hiển thị  
+
+## 3.3 Tạo class hiển thị giao diện  
+
+Để tạo giao diện cho navigation, khi người dùng nhấn vào nút thì ta sẽ tạo tệp tương ứng ở thư mục [gui](src/gui/).  
+Tại đây ta tạo tệp tương ứng với `database navigation` sẽ có tên là [database_window](src/gui/database_window.py). Class trong tệp này kế thừa thuộc tính là `CtkFrame` từ `Customtkinter`.  
+
+Tùy theo giao diện mà ta sẽ tạo nó tương ứng với nhu cầu, tuy nhiên cần đúng định dạng là 1 Frame. Có thê tham khảo tại thư mục `gui`.  
 
 > [!QUESTION]  
 > ❓ Các câu hỏi thường gặp  
