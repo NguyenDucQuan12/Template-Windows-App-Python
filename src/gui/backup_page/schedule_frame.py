@@ -739,7 +739,14 @@ catch {{
         base = f'schtasks /Create /TN "{task_name}" /RL HIGHEST /F /RU "{user}" /RP "{pwd}" '
 
         if args["type"] == "MINUTE":
-            return (base + f'/SC MINUTE /MO {args["mo"]} /ST {args["st"]} /DU {args["du"]} '
+
+            # Chạy mỗi N giờ → dùng /SC HOURLY /MO N /ST HH:MM /DU 24:00 (Chạy 1 lần/ngày nhưng lặp lại mỗi N giờ suốt ngày)
+            # Chạy mỗi N phút → dùng /SC MINUTE /MO N /ST HH:MM /DU 24:00 (Chạy 1 lần/ngày nhưng lặp lại mỗi N phút suốt ngày)
+            # return (base + f'/SC MINUTE /MO {args["mo"]} /ST {args["st"]} /DU {args["du"]} '
+            #         + f'/TR "{ps_base_exec} -Type {task_type}"')
+
+            # Chạy mỗi N phút trong 1 ngày, tuy nhiên lặp lại mỗi ngày (ngày sau lại bắt đầu từ đầu)
+            return (base + f'/SC DAILY /ST {args["st"]} /RI {args["mo"]} /DU {args["du"]} '
                     + f'/TR "{ps_base_exec} -Type {task_type}"')
 
         if args["type"] == "DAILY":
@@ -812,8 +819,11 @@ catch {{
                    f'-Stripes {stripes} -LogPath "{log_path}"')
 
         # Nếu có SQL Auth → gắn kèm để đảm bảo quyền trên SQL
-        # if sql_user and sql_pass:
-        #     ps_exec += f' -SqlUser "{sql_user.replace(\'"\', \'\\\"\')}" -SqlPass "{sql_pass.replace(\'"\', \'\\\"\')}"'
+        if sql_user and sql_pass:
+            # escape " trong user/pass trước khi nối vào chuỗi
+            esc_sql_user = sql_user.replace('"', '\\"')
+            esc_sql_pass = sql_pass.replace('"', '\\"')
+            ps_exec += f' -SqlUser "{esc_sql_user}" -SqlPass "{esc_sql_pass}"'
 
         names = self._task_names()
         cmds: Dict[str, str] = {}
