@@ -10,6 +10,7 @@
 
 > [!TIP]
 > 💡 Tài khoản đăng nhập mặc định **Test - Test**  
+> Các tài khoản khác đăng nhập theo : Email và Password  
 
 Phần mềm được phân quyền với 3 mức độ: `Admin`, `User`, `Guest`  
 
@@ -31,26 +32,26 @@ Khi bạn đã có tài khoản sử dụng nhưng `quên mật khẩu` thì có
 
 ![image](assets/github/images/forgot_password_screen_windows.png)
 
-Yêu cầu người dùng nhập email đã đăng ký và ấn nút `Lấy OTP` để nhận 1 mã 6 chữ số thì mới có thể thay đổi mật khẩu. Mã OTP sẽ được gửi tới mail đã đăng ký, thời hạn của mã OTP sẽ là 5 phút.  
+Yêu cầu người dùng nhập `email đã đăng ký` và ấn nút `Lấy OTP` để nhận 1 mã `6 chữ số` thì mới có thể thay đổi mật khẩu. Mã OTP sẽ được gửi tới mail đã đăng ký, thời hạn của mã OTP sẽ là `5 phút`.  
 
 ## 2. Trang chủ
-Sau khi đăng nhập phần mềm thành công sẽ tiến vào trang chủ (nếu tài khoản là admin)  
+Sau khi đăng nhập phần mềm thành công sẽ tiến vào trang chủ `(nếu tài khoản là admin)`  
 
 ![image](assets/github/images/home_screen_windows.png)
 
 Tại đây có thể `kích hoạt tài khoản`, `Xóa tài khoản`, `Thay đổi quyền hạn`, ...  
 
-
 # Lập trình phần mềm với Python  
 
 > [!IMPORTANT]  
 > **Trước khi đi vào lập trình phần mềm cần lưu ý một số điều sau**  
-> **Python: từ 3.12 trở lên**  
-> **Database: Sử dụng SQL Server**  
+> **Python**: từ 3.12 trở lên  
+> **Database**: SQL Server  
+> **Công cụ lập trình**: Visual Studio Code  
 
 # 1. Tạo môi trường ảo
 
-Để đảm bảo an toàn và tránh cài đặt những thứ không cần thiết vào thư mục gốc của máy tính thì ta sử dụng môi trường ảo. Có thể tham khảo về môi trường ảo trong Python tại [github](https://github.com/NguyenDucQuan12/virtual_environment_python) hoặc [youtube](https://youtu.be/FnqKNUp4Htg).  
+Để đảm bảo an toàn và tránh cài đặt những thứ không cần thiết vào thư mục gốc của máy tính thì ta sử dụng `môi trường ảo`. Có thể tham khảo về môi trường ảo trong Python tại [github](https://github.com/NguyenDucQuan12/virtual_environment_python) hoặc [youtube](https://youtu.be/FnqKNUp4Htg).  
 
 Chạy lệnh sau để tạo môi trường ảo:  
 
@@ -80,6 +81,11 @@ Liệt kê các thư viện đã sử dụng vào tệp `requirements.txt`:
 python -m pip freeze > requirements.txt
 ```
 
+Khởi động chương trình bằng `Terminal` của `VS code`:  
+```python
+python src/main.py
+```
+
 # 2. Tạo CSDL
 
 > [!NOTE]  
@@ -87,11 +93,16 @@ python -m pip freeze > requirements.txt
 
 Để có thể kết nối được `Python` với `SQL Server` ta cần sử dụng `driver ODBC`. Driver được tải trực tiếp từ `Microsoft`.  
 
-Đầu tiên ta cần tạo 1 CSDL trước có tên là `DucQuanApp`:  
+Mở `SQL Server Management Studio (SSMS)` kết nối tới `Database`, rồi `New Query`.  
+
+![image](assets/github/images/open_new_query_ssms.png)
+
+Tất cả các lệnh đều được thực hiện ở đây. Đầu tiên ta cần tạo 1 CSDL trước có tên là `DucQuanApp`.  
 ```SQL
 -- Tạo database mới
 CREATE DATABASE DucQuanApp
 ```
+
 ![image](assets/github/images/create_database.png)
 
 Sau khi tạo xong Database ta cần chuyển đến `DucQuanApp` thì mới có thể thực hiện thao tác đối với CSDL này:  
@@ -200,7 +211,9 @@ WHERE
 
 ![image](assets/github/images/create_role_databse.png)
 
-Một số lệnh cấp quyền cho người dùng trong SQL Server:  
+Vậy là đã hoàn thành cấp quyền truy cập CSDL để thao tác với phần mềm.  
+
+Một số lệnh cấp quyền cho người dùng trong SQL Server (Dùng tham khảo cho các trường hợp phân quyền rõ ràng, giới hạn chức năng cho 1 số người):  
 
 Các lệnh `DENY`, `GRANT`, `REVOKE`, và `ALTER ROLE` đều được sử dụng để quản lý quyền truy cập của người dùng trong SQL Server, nhưng chúng có chức năng và cách thức hoạt động khác nhau.  
 
