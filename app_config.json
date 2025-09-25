@@ -9,7 +9,8 @@
     "backup_dir": null
   },
   "databases": [
-    "Docker_DB"
+    "Docker_DB",
+    "MBO_DB"
   ],
   "schedule": {
     "full": "0 0 * * 0",
@@ -28,6 +29,24 @@
         "instance": ".\\SQLEXPRESS",
         "stripes": 4,
         "ps1_path": "C:\\Scripts\\Backup-Db.ps1",
+        "run_always": true,
+        "user": "Server_Quan_IT",
+        "pass": "238299",
+        "sql_user": "",
+        "sql_pass": ""
+      }
+    },
+    "MBO_DB": {
+      "backup_dir": "E:/SQL_Backup\\",
+      "schedule": {
+        "full": "0 0 * * 0",
+        "diff": "30 0 * * 1-6",
+        "log": "*/15 * * * *"
+      },
+      "scheduler": {
+        "instance": ".\\SQLEXPRESS",
+        "stripes": 4,
+        "ps1_path": "E:/Script/MBO_DB/Backup-Db.ps1",
         "run_always": true,
         "user": "Server_Quan_IT",
         "pass": "238299",
