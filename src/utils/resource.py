@@ -20,9 +20,9 @@ def resource_path(relative_path):
         if full_path.endswith(('.png', '.jpg', '.jpeg', '.ico')):
             # Nếu là hình ảnh thì trả về đường dẫn mặc định
             return IMAGE["DEFAULT_IMG"]
+        
         # Nếu không phải là hình ảnh thì trả về none
         else:
-            # Nếu không phải là tệp tin văn bản thì trả về None
             return None
         
     return full_path
