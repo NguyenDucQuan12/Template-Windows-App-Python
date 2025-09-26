@@ -16,6 +16,7 @@ from services.email_service import InternalEmailSender
 from utils.constants import *
 from utils.loading_gif import LoadingGifLabel
 from utils.resource import resource_path
+from utils.modal_loading import ModalLoadingPopup
 
 from schedule_work.schedule_work import Schedule_Auto
 
@@ -76,6 +77,8 @@ class HomePage(customtkinter.CTkFrame):
 
         self.auto_send_mail = Schedule_Auto()
         self.email_status_list = []
+
+        self.loading = ModalLoadingPopup(parent)  # truyền frame làm parent
 
         # set grid layout 1x2
         # self.grid_rowconfigure(0, weight=1)
@@ -257,7 +260,9 @@ class HomePage(customtkinter.CTkFrame):
         Nút bấm lấy thông tin tài khoản người dùng và hiển thị lên treeview
         """
         # Hiện popup loading
-        self.show_loading_popup()
+        # self.show_loading_popup()
+        self.loading.show()
+        
 
         # Tạo luồng mới để cập nhật dữ liệu vào CSDL
         threading.Thread(target=self.get_all_infor_user_in_thread, daemon= True).start()
@@ -272,7 +277,8 @@ class HomePage(customtkinter.CTkFrame):
             # Nếu là False thì sẽ là lỗi trong khi truy vấn
             if results["success"] is False:
                 # Đóng popup và hiển thị messagebox
-                self.after(0, self.hide_loading_popup)
+                # self.after(0, self.hide_loading_popup)
+                self.loading.schedule_hide()
                 self.after(0, lambda: messagebox.showerror("Lỗi truy vấn", "Không thể truy vấn dữ liệu người dùng từ CSDL."))
                 return
             
@@ -323,7 +329,8 @@ class HomePage(customtkinter.CTkFrame):
             self.change_role_account_button.configure(state="disabled")
             
             # Đóng popup
-            self.hide_loading_popup()
+            # self.hide_loading_popup()
+            self.loading.hide()
         else:
             # Nếu không có dữ liệu thì hiển thị thông báo
             self.hide_loading_popup()
