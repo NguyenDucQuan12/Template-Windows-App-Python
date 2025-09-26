@@ -15,20 +15,17 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "server": None,
         "auth_mode": "sql",   # hoặc "windows"
         "username": None,
-        # password KHÔNG nên lưu rõ; tuỳ bạn lưu tạm session hoặc vault
     },
     "storage": {
         "backup_dir": None,    # thư mục lưu trên máy SQL Server (ổ cục bộ/UNC)
     },
     "databases": [],            # danh sách DB được chọn backup
     "schedule": {
-        # Ví dụ lịch (bạn thay theo chuẩn của bạn)
         "full": "0 0 * * 0",     # Chủ nhật 00:00 (CRON)
         "diff": "30 0 * * 1-6",   # T2-T7 00:30
         "log":  "*/15 * * * *",   # mỗi 15 phút
     }
 }
-
 
 def ensure_parent(path: str) -> None:
     """Đảm bảo thư mục cha tồn tại trước khi ghi file."""
