@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 import pyodbc
 
 from utils.utils import get_odbc_drivers_for_sql_server
+from utils.modal_loading import ModalLoadingPopup
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ class ConnectionFrame(ctk.CTkFrame):
 
         # Biến lưu dữ trạng thái của frame Database
         self.owner = owner_page 
+
+        self.loading = ModalLoadingPopup(parent)  # truyền frame làm parent
 
         # Biến lưu giữ kết nối tới DB
         self.conn: Optional[pyodbc.Connection] = None
@@ -165,7 +168,6 @@ class ConnectionFrame(ctk.CTkFrame):
         self.lbl_status.see("end")
         self.lbl_status.configure(state="disabled")
 
-
     def _do_connect(self):
         """
         Kết nối tới CSDL
@@ -180,7 +182,8 @@ class ConnectionFrame(ctk.CTkFrame):
         pwd    = self.ent_pass.get().strip() if mode == "sql" else None
 
         if not driver:
-            messagebox.showwarning("Thiếu thông tin", "Chọn ODBC Driver từ danh sách.")
+            messagebox.showwarning("Thiếu thông tin", "Chọn ODBC Driver từ danh sách. \
+                                   \nNếu không tìm thấy danh sách driver, vui lòng cài đặt từ trang chủ Microsoft")
             return
         if not server:
             messagebox.showwarning("Thiếu thông tin", "Nhập Server/Instance.")
@@ -196,91 +199,143 @@ class ConnectionFrame(ctk.CTkFrame):
         self.insert_status(text= "Đang kết nối...")
         self.btn_connect.configure(state="disabled")
 
-        # hiển thị popup
-        self.show_loading_popup_progress()
+        # Lưu config kết nối (không lưu password) vào tệp cấu hình
+        self.owner.config["connection"].update({
+            "driver": driver,
+            "server": server,
+            "auth_mode": mode,
+            "username": user,
+        })
 
-        # Tạo luồng mới để cập nhật dữ liệu vào CSDL
+        # Ghi dữ liêu vào tệp json cấu hình
+        self.owner.save_config(silent = True)
+
+        # hiển thị popup
+        self.loading.show()
+
+        # Tạo luồng mới để kết nối tới SQL Server
         threading.Thread(target=self.connect_in_thread, args=(conn_str,), daemon= True).start()
 
     def connect_in_thread(self, connect_string):
         try:
+            # Kết nối tới SQL Server
             conn = pyodbc.connect(connect_string)
+            # Lưu kết nối
             self.conn = conn
-            self.owner.conn = conn  # chia sẻ cho toàn trang
-            # Lưu config kết nối (không lưu password rõ)
-            self.owner.config["connection"].update({
-                "driver": driver,
-                "server": server,
-                "auth_mode": mode,
-                "username": user,
-            })
-            self.owner.save_config(silent = True)  # ghi file JSON
+            self.owner.conn = conn  # chia sẻ cho toàn trang  
 
-            self.lbl_status.configure(state="normal", text_color="#22c55e")
-            self.lbl_status.delete("0.0", "end")
-            self.lbl_status.insert("end", f"Đã kết nối" + "\n")
-            self.lbl_status.see("end")
-            self.lbl_status.configure(state="disabled")
-            self.btn_refresh.configure(state="normal")
-            self.btn_add.configure(state="normal")
-            self._refresh_dbs()
+            # Cập nhật thông tin lên giao diện chính
+            self.after(0, self.update_after_connect_SQL_Server)
 
-            self.after(0, self.hide_loading_popup)
-            self.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"Không thể kết nối tới CSDL. \
-                                 \n Vui lòng liên hệ bộ phận IT"))
+            # Ẩn popup loading và hiển thị thông báo
+            self.loading.schedule_hide()
+            self.after(0, lambda: messagebox.showinfo("Đã kết nối", f"Kết nối tới SQL Server thành công."))
         except Exception as e:
-            logger.exception("Connect failed: %s", e)
-            self.lbl_status.configure(state="normal", text_color="#ef4444")
-            self.lbl_status.delete("0.0", "end")
-            self.lbl_status.insert("end", f"Kết nối thất bại: {e}" + "\n")
-            self.lbl_status.see("end")
-            self.lbl_status.configure(state="disabled")
+            # Hiện thị lỗi
+            self.after(0, lambda err=e: self.update_after_connect_SQL_Server(success=False, error= str(err)))
 
             # Ẩn popup và ghi log
-            self.after(0, self.hide_loading_popup)
-            logger.error(f"Xảy ra lỗi trong quá trình kết nối tới CSDL: {e}")
-        finally:
-            self.btn_connect.configure(state="normal")
+            # self.after(0, self.loading.hide)
+            self.loading.schedule_hide()
+            logger.error(f"Xảy ra lỗi trong quá trình kết nối tới SQL Server: {e}")            
     
-    def update_after_connect_SQL_Server(self):
+    def update_after_connect_SQL_Server(self, success = True, error = ""):
         """
         Cập nhật giao diện chương trình sau khi kết nối tới CSDL
         """
+        if success:
+            # Hiển thị trạng thái đã kết nối
+            self.insert_status("Đã kết nối", color="#22c55e")
+
+            # Kích hoạt các nút chức năng
+            self.btn_refresh.configure(state="normal")
+            self.btn_add.configure(state="normal")
+
+            # Lấy danh sách Database từ SQL Server
+            self._refresh_dbs()
+        else:
+            # Thông báo lỗi
+            self.insert_status(text=f"Không thể kết nối tới SQL Server: \n {error}")
+        
+        # Sau cùng mở lại nút bấm kết nối
+        self.btn_connect.configure(state="normal")
 
     def _refresh_dbs(self):
+        """
+        Truy vấn danh sách Database và hiển thị lên frame bên phải
+        """
+        # Nếu chưa kết nối thì không làm gì cả
         if not self.conn:
             return
+        
+        # Khóa nút Tải lại, ko cho click liên tục
         self.btn_refresh.configure(state="disabled")
-        self.tv.delete(*self.tv.get_children())
 
-        def _load():
-            try:
-                cur = self.conn.cursor()
-                cur.execute("""
-                    SELECT name, state_desc, recovery_model_desc
-                    FROM sys.databases
-                    WHERE database_id > 4
-                    ORDER BY name ASC
-                """)
-                for name, state, rm in cur.fetchall():
-                    self.tv.insert("", "end", values=(name, state, rm))
-            except Exception as e:
-                messagebox.showerror("Lỗi", f"Không thể lấy danh sách database:\n{e}")
-            finally:
-                self.btn_refresh.configure(state="normal")
+        # Xóa các hàng cũ trong Treeview
+        for row in self.tv.get_children():
+            self.tv.delete(row)
 
-        threading.Thread(target=_load, daemon=True).start()
+        # Hiện popup loading
+        self.loading.show()
+        # Gọi truy vấn DB trong luồng riêng
+        threading.Thread(target= self.get_list_database_in_thread, daemon= True).start()
+
+    def get_list_database_in_thread(self):
+        """
+        Truy vấn danh sách Databse từ SQL Server đã kết nối
+        """
+        try:
+            # Tạo con trỏ
+            cur = self.conn.cursor()
+            # Thực hiện truy vấn
+            cur.execute("""
+                SELECT name, state_desc, recovery_model_desc
+                FROM sys.databases
+                WHERE database_id > 4  -- Các DB có id <= 4 là DB gốc: master, tempdb, model, msdb
+                ORDER BY name ASC
+            """)
+            # Lấy dữ liệu trả về
+            data = cur.fetchall()
+
+            # Ẩn popup loading
+            self.loading.schedule_hide()
+            # Gọi hàm sửa giao diện
+            self.after(0, lambda: self.insert_database_into_treeview(data= data))
+            
+        except Exception as e:
+            # Ẩn popup và hiển thị lỗi
+            self.loading.schedule_hide()
+            self.after(0, lambda err=e: self.insert_status(text=f"Xảy ra lỗi khi truy vấn thông tin database: \n{str(err)}"))
+            self.after(0, lambda err=e: messagebox.showerror("Lỗi kết nối", f"Không thể lấy danh sách database") )
+    
+    def insert_database_into_treeview(self, data):
+        """
+        Hiển thị danh sách Database lên treeview
+        """
+        # Mở lại chức năng refresh
+        self.btn_refresh.configure(state="normal")
+        # Điền dữ liệu vào treeview
+        for name, state, rm in data:
+            self.tv.insert("", "end", values=(name, state, rm))
 
     def _add_selected(self):
+        """
+        Thêm 1 database từ treeview vào danh sách Database sử dụng backup
+        """
+        # Lấy danh sách item mà đang được chọn từ treeview (Có thể người dùng chọn nhiều item một lúc)
         items = self.tv.selection()
         if not items:
             messagebox.showinfo("Chưa chọn", "Chọn ít nhất một DB.")
             return
+        
+        # Danh sách chứa các DB cần thêm
         added = []
+        # Duyệt qua từng item và lưu vào danh sách
         for iid in items:
             name = self.tv.item(iid, "values")[0]
             if self.owner.add_database_for_backup(name):
                 added.append(name)
+        # Nếu có databse được thêm thì lưu nó vào tệp config
         if added:
             # cập nhật config và lưu
             self.owner.config["databases"] = sorted(self.owner.selected_databases)
