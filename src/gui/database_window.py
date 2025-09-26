@@ -21,6 +21,7 @@ sys.path.append(PROJECT_DIR)
 from services.email_service import InternalEmailSender
 from utils.utils import get_odbc_drivers_for_sql_server
 from utils.app_config import load_config, save_config
+from utils.resource import resource_path
 
 # Các frame con
 from gui.backup_page import (
@@ -35,8 +36,7 @@ from gui.backup_page import (
 logger = logging.getLogger(__name__)
 
 # Tệp cấu hình kết nối DB
-CONFIG_PATH = "app_config.json"
-
+CONFIG_PATH = "data/backup/scheduler.json"
 
 class DatabasePage(ctk.CTkFrame):
     """
@@ -57,14 +57,14 @@ class DatabasePage(ctk.CTkFrame):
         # Danh sách driver ODBC khả dụng (đọc một lần)
         self.odbc_drivers = get_odbc_drivers_for_sql_server()
 
-        # Kết nối hiện tại (nếu đã kết nối thành công từ tab "Kết nối")
+        # Kết nối hiện tại (nếu đã kết nối thành công từ tab "Kết nối" sẽ được gán vào đây)
         self.conn: Optional[pyodbc.Connection] = None
 
         # Lưu thông tin kết nối (driver, server, auth_mode, username)
         self.conn_config: Dict[str, Any] = {}
 
         # Đọc cấu hình JSON (tự động tạo default nếu chưa có)
-        self.config: Dict[str, Any] = load_config(CONFIG_PATH)
+        self.config: Dict[str, Any] = load_config(resource_path(CONFIG_PATH))
 
         # Tập hợp DB đã chọn để backup (đồng bộ từ config)
         self.selected_databases: Set[str] = set(self.config.get("databases", []))
@@ -115,29 +115,6 @@ class DatabasePage(ctk.CTkFrame):
 
         # Đẩy các nút thao tác nhanh xuống cuối
         self.sidebar.grid_rowconfigure(len(self._nav_defs) + 1, weight=1)
-
-        # Nút thao tác nhanh (placeholder – bạn nối vào scheduler thực tế)
-        self.btn_start = ctk.CTkButton(
-            self.sidebar,
-            text="▶ Start Scheduler",
-            fg_color="#22c55e",
-            hover_color="#16a34a",
-            command=self._on_start,
-        )
-        self.btn_stop = ctk.CTkButton(
-            self.sidebar,
-            text="⏸ Stop Scheduler",
-            fg_color="#ef4444",
-            hover_color="#b91c1c",
-            command=self._on_stop,
-        )
-        # Lưu cấu hình ra JSON
-        self.btn_save = ctk.CTkButton(self.sidebar, text="💾 Lưu cấu hình", command=self.save_config)
-
-        base = len(self._nav_defs) + 1
-        self.btn_start.grid(row=base + 0, column=0, padx=20, pady=(20, 8), sticky="ew")
-        self.btn_stop.grid(row=base + 1, column=0, padx=20, pady=8, sticky="ew")
-        self.btn_save.grid(row=base + 2, column=0, padx=20, pady=(8, 20), sticky="ew")
 
     # ======================================================================
     # Content (vùng chính, lazy-load)
@@ -230,9 +207,6 @@ class DatabasePage(ctk.CTkFrame):
         """Chuỗi timestamp ngắn để đóng dấu tên file backup (YYYYMMDD_HHMMSS)."""
         return datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # ======================================================================
-    # Lưu / Đọc cấu hình JSON
-    # ======================================================================
     def save_config(self, silent: bool = False):
         """
         Ghi state hiện tại vào file JSON cấu hình:
@@ -252,16 +226,6 @@ class DatabasePage(ctk.CTkFrame):
             from tkinter import messagebox
             messagebox.showinfo("Cấu hình", f"Đã lưu cấu hình vào {CONFIG_PATH}")
 
-    # ======================================================================
-    # Nút nhanh (placeholder – bạn nối với scheduler thực tế)
-    # ======================================================================
-    def _on_start(self):
-        from tkinter import messagebox
-        messagebox.showinfo("Scheduler", "Start scheduler (placeholder). Hãy nối với Schedule_Auto của bạn.")
-
-    def _on_stop(self):
-        from tkinter import messagebox
-        messagebox.showinfo("Scheduler", "Stop scheduler (placeholder)")
 if __name__ == "__main__":
     ctk.set_appearance_mode("dark")
     root = ctk.CTk()
