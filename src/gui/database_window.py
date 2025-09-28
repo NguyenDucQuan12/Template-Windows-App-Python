@@ -60,6 +60,9 @@ class DatabasePage(ctk.CTkFrame):
         # Kết nối hiện tại (nếu đã kết nối thành công từ tab "Kết nối" sẽ được gán vào đây)
         self.conn: Optional[pyodbc.Connection] = None
 
+        # Chuỗi kết nối tới CSDL
+        self.connection_string: str = None
+
         # Lưu thông tin kết nối (driver, server, auth_mode, username)
         self.conn_config: Dict[str, Any] = {}
 
@@ -79,6 +82,21 @@ class DatabasePage(ctk.CTkFrame):
 
         # Mặc định mở Dashboard khi vào màn hình chính
         self.show_page("Connection")
+
+    def _connect(self):
+        """Hàm kết nối đến DB với connection pooling."""
+        # kiểm tr xem có chuỗi kết nối
+        if not self.connection_string:
+            return None
+        
+        # Tiến hành kết nối tới CSDL
+        try:
+            conn = pyodbc.connect(self.connection_string)
+            logger.debug("Kết nối đến cơ sở dữ liệu thành công.")
+            return conn
+        except Exception as e:
+            logger.error(f"Không thể kết nối đến cơ sở dữ liệu: {e}")
+            return None
 
     # ======================================================================
     # Sidebar (bên trái)

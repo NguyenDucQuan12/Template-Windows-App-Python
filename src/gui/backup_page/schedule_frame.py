@@ -6,6 +6,7 @@ import threading
 import subprocess
 import customtkinter as ctk
 from tkinter import messagebox, filedialog
+import pyodbc
 from typing import Dict, Any, Optional, Tuple, List
 
 from utils.modal_loading import ModalLoadingPopup
@@ -485,7 +486,7 @@ class ScheduleFrame(ctk.CTkFrame):
         - Thử xoá file test bằng xp_cmdshell (nếu tắt thì bỏ qua, chỉ log).
         """
         # 1) Kiểm tra đầu vào/các điều kiện cần
-        if not self.owner or not getattr(self.owner, "conn", None):
+        if not self.owner or not getattr(self.owner, "connection_string", None):
             messagebox.showwarning("Chưa kết nối", "Kết nối SQL Server trước khi kiểm tra.")
             return
 
@@ -507,24 +508,28 @@ class ScheduleFrame(ctk.CTkFrame):
         """
         Kiểm tra thư mục chứa tệp backup trước khi backup
         """
-        # kiểm tra kết nối
-        conn = self.owner.conn
-        cur = None
-
-        # Lưu trạng thái autocommit hiện tại để khôi phục sau
-        prev_autocommit = getattr(conn, "autocommit", False)
         try:
-            conn.autocommit = True  # Backup/maintenance nên bật Autocommit
-            cur = conn.cursor()
-
             # Chuẩn hoá đường dẫn: kết thúc bằng "\" nếu là path cục bộ
             base = target_dir
             if not (base.endswith("\\") or base.endswith("/")):
                 base += "\\"
 
-            # 2.1) Thử 'nhìn' thư mục bằng xp_dirtree (có thể bị tắt — chỉ cảnh báo)
+            # kết nối tới CSDL
+            self.conn = self.owner._connect()
+            # Nếu chưa kết nối thì không làm gì cả
+            if not self.conn:
+                # Ẩn popup
+                self.loading.schedule_hide()
+                return
+            
+            # Bật auto commit
+            self.conn.autocommit = True
+            
             try:
-                cur.execute("EXEC master..xp_dirtree ?, 1, 1", (base,))
+                # Tạo con trỏ
+                with self.conn.cursor() as cursor:
+                    # Thực hiện truy vấn
+                    cursor.execute("EXEC master..xp_dirtree ?, 1, 1", (base,))
 
             except Exception as e:
                 self.after(0, lambda err=e: self._log(f"[CHÚ Ý] xp_dirtree lỗi (bỏ qua bước này): {err}"))
@@ -538,21 +543,22 @@ class ScheduleFrame(ctk.CTkFrame):
             # COPY_ONLY: không ghi nhận vào chuỗi full/diff hiện hữu
             # COMPRESSION: giảm I/O đĩa và mạng (nếu UNC)
             # INIT, SKIP, CHECKSUM: an toàn & rõ ràng
-
-            cur.execute(
-                """
-                BACKUP DATABASE [model]
-                TO DISK = ?
-                WITH COPY_ONLY, INIT, SKIP, CHECKSUM, STATS = 1;
-                """,
-                (test_path,)
-            )
-
-            # 2.4) Thử xoá file test (nếu xp_cmdshell bật)
             try:
-                # Lưu ý escape dấu " trong đường dẫn khi đưa vào lệnh del
-                del_cmd = f'del "{test_path.replace("\"", "\"\"")}"'
-                cur.execute("EXEC master..xp_cmdshell ?", (del_cmd,))
+                with self.conn.cursor as cursor:
+                    cursor.execute(
+                        """
+                        BACKUP DATABASE [model]
+                        TO DISK = ?
+                        WITH COPY_ONLY, INIT, SKIP, CHECKSUM, STATS = 1;
+                        """,
+                        (test_path,)
+                    )
+
+                    # 2.4) Thử xoá file test (nếu xp_cmdshell bật)
+                    # Lưu ý escape dấu " trong đường dẫn khi đưa vào lệnh del
+                    del_cmd = f'del "{test_path.replace("\"", "\"\"")}"'
+                    cursor.execute("EXEC master..xp_cmdshell ?", (del_cmd,))
+
             except Exception:
                 # Không sao nếu xp_cmdshell tắt — chỉ nhắc admin xoá tay
                 self.after(0, lambda: self._log("[CHÚ Ý] xp_cmdshell tắt/không xoá được. Hãy xoá tay file test nếu cần."))
@@ -565,17 +571,8 @@ class ScheduleFrame(ctk.CTkFrame):
         finally:
             # Ẩn popup
             self.loading.schedule_hide()
-            # Khôi phục autocommit
-            try:
-                conn.autocommit = prev_autocommit
-            except Exception:
-                pass
-            # Đóng cursor nếu còn
-            try:
-                if cur is not None:
-                    cur.close()
-            except Exception:
-                pass
+            # ngắt kết nối CSDL
+            self.conn.close()
 
     # ============================= Schedule (CRON) =============================
 
@@ -613,7 +610,7 @@ class ScheduleFrame(ctk.CTkFrame):
         Chạy BACKUP trực tiếp (FULL/DIFF/LOG) thủ công
         """
         # Kiểm tra các thông tin đầu vào
-        if not self.owner.conn:
+        if not self.owner.connection_string:
             messagebox.showwarning("Chưa kết nối", "Kết nối SQL Server trước.");
             return
         
@@ -701,13 +698,18 @@ class ScheduleFrame(ctk.CTkFrame):
         - FULL/DIFF: nhiều stripes trong cùng thư mục.
         - LOG: kiểm tra recovery model + yêu cầu có FULL backup trước.
         """
-        conn = None
-        cur  = None
+
         try:
-            conn = self.owner.conn
-            restore_autocommit = getattr(conn, "autocommit", False)
-            conn.autocommit = True
-            cur = conn.cursor()
+            self.conn = self.owner._connect()
+            # kết nối tới CSDL
+
+            if not self.conn:
+                self.loading.schedule_hide()
+                return
+
+            # Bật auto commit
+            self.conn.autocommit = True
+            cur = self.conn.cursor()
 
             dbname = self.current_db
             # Chuẩn hoá base path VỀ backslash & có trailing '\'
@@ -799,9 +801,14 @@ class ScheduleFrame(ctk.CTkFrame):
 
             # Log bản T-SQL đã render để kiểm tra/copy-paste
             rendered = self._render_sql_for_log(tsql, params)
-            print("Rendered SQL:\n%s", rendered)
+            print(f"{rendered}")
 
             cur.execute(tsql, params)
+            # Các lệnh backup được chạy theo từng giai đoạn (Nếu ko có vòng lặp này sẽ khiến chạy 
+            #  được 1 giai đoạn sẽ ngắt kết nối tới CSDL gây ra lỗi câu lệnh chạy ko lỗi nhưng ko có tệp backup được sinh ra) 
+            # Đây là lỗi khi chạy trên python, nó ko tự nhận biết được các giai đoạn backup như ssms
+            while (cur.nextset()):
+                pass
 
             # ----- XÁC MINH sau khi backup: file phải tồn tại -----
             missing = []
@@ -856,17 +863,12 @@ class ScheduleFrame(ctk.CTkFrame):
                 )
             else:
                 hint = ""
-            self.after(0, lambda: self._log(f"[LỖI] {e}{hint}"))
+            self.after(0, lambda err=e: self._log(f"[LỖI] {err}{hint}"))
         finally:
             try: self.loading.schedule_hide()
             except: pass
             try:
-                if conn is not None:
-                    conn.autocommit = restore_autocommit
-            except: pass
-            try:
-                if cur is not None:
-                    cur.close()
+                self.conn.close()
             except: pass
 
     # ============================ Task Scheduler ============================

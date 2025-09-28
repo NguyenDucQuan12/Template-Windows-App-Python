@@ -159,31 +159,40 @@ class RestoreFrame(ctk.CTkFrame):
         db = self.current_db
         if not db:
             messagebox.showwarning("Chưa chọn DB", "Hãy chọn CSDL nguồn."); return
-        if not self.owner.conn:
+        if not self.owner.connection_string:
             messagebox.showwarning("Chưa kết nối", "Chưa có kết nối SQL Server."); return
 
-        cur = self.owner.conn.cursor()
         try:
-            cur.timeout = self.DEFAULT_QUERY_TIMEOUT
+            # kết nối tới CSDL
+            self.conn = self.owner._connect()
+            # Nếu chưa kết nối thì không làm gì cả
+            if not self.conn:
+                return
+            
+            # Tạo con trỏ
+            with self.conn.cursor() as cursor:
+                # Thực hiện truy vấn
+                cursor.timeout = self.DEFAULT_QUERY_TIMEOUT
+                sql = r"""
+                    SELECT
+                        bs.backup_set_id,
+                        bs.media_set_id,
+                        bs.database_name,
+                        bs.type,                -- D=Full, I=Diff, L=Log
+                        bs.is_copy_only,
+                        CONVERT(nvarchar(23), bs.backup_start_date, 121) as start_121,
+                        CONVERT(nvarchar(23), bs.backup_finish_date, 121) as finish_121,
+                        bs.first_lsn, bs.last_lsn, bs.differential_base_lsn
+                    FROM msdb.dbo.backupset bs
+                    WHERE bs.database_name = ?
+                    ORDER BY bs.backup_finish_date ASC
+                """
+                cursor.execute(sql, (db,))
+                self.timeline_rows = cursor.fetchall()
         except Exception:
             pass
-
-        sql = r"""
-            SELECT
-                bs.backup_set_id,
-                bs.media_set_id,
-                bs.database_name,
-                bs.type,                -- D=Full, I=Diff, L=Log
-                bs.is_copy_only,
-                CONVERT(nvarchar(23), bs.backup_start_date, 121) as start_121,
-                CONVERT(nvarchar(23), bs.backup_finish_date, 121) as finish_121,
-                bs.first_lsn, bs.last_lsn, bs.differential_base_lsn
-            FROM msdb.dbo.backupset bs
-            WHERE bs.database_name = ?
-            ORDER BY bs.backup_finish_date ASC
-        """
-        cur.execute(sql, (db,))
-        self.timeline_rows = cur.fetchall()
+        finally:
+            self.conn.close()
 
         # Hiển thị
         for r in self.timeline_rows:
@@ -289,19 +298,30 @@ class RestoreFrame(ctk.CTkFrame):
     # -------------------- Helper: msdb.media to file list --------------------
 
     def _media_to_files(self, media_set_id):
-        cur = self.owner.conn.cursor()
         try:
-            cur.timeout = self.DEFAULT_QUERY_TIMEOUT
-        except Exception:
+            # kết nối tới CSDL
+            self.conn = self.owner._connect()
+            # Nếu chưa kết nối thì không làm gì cả
+            if not self.conn:
+                return
+            
+            # Tạo con trỏ
+            with self.conn.cursor() as cursor:
+                # Thực hiện truy vấn
+                cursor.timeout = self.DEFAULT_QUERY_TIMEOUT
+
+                sql = """
+                    SELECT physical_device_name, family_sequence_number
+                    FROM msdb.dbo.backupmediafamily
+                    WHERE media_set_id = ?
+                    ORDER BY family_sequence_number
+                """
+                cursor.execute(sql, (media_set_id,))
+                return cursor.fetchall()
+        except:
             pass
-        sql = """
-            SELECT physical_device_name, family_sequence_number
-            FROM msdb.dbo.backupmediafamily
-            WHERE media_set_id = ?
-            ORDER BY family_sequence_number
-        """
-        cur.execute(sql, (media_set_id,))
-        return cur.fetchall()
+        finally:
+            self.conn.close()
 
     def _from_disk_clause(self, media_set_id, missing_files):
         """
@@ -344,8 +364,11 @@ class RestoreFrame(ctk.CTkFrame):
             self._warn(f"Thiếu file (client không thấy): {len(missing)} tệp. HEADERONLY vẫn thử trên server.")
 
         # Mượn/chuẩn bị kết nối autocommit+master
-        base_conn = self.owner.conn
-        conn_str = getattr(self.owner, "conn_str", None)
+        base_conn = self.owner._connect()
+        if not base_conn:
+            return
+        
+        conn_str = getattr(self.owner, "connection_string", None)
         if conn_str:
             cs = re.sub(r"(;|\A)\s*Database\s*=\s*[^;]*", "", conn_str, flags=re.I)
             if not cs.endswith(";"):
@@ -390,6 +413,8 @@ class RestoreFrame(ctk.CTkFrame):
             pass
         if cnx is not base_conn:
             cnx.close()
+        if base_conn:
+            base_conn.close()
         return info
 
     def _preflight_validate_chain(self, base_row, diff_row, log_rows):
@@ -461,7 +486,7 @@ class RestoreFrame(ctk.CTkFrame):
         db = self.current_db
         if not db:
             messagebox.showwarning("Chưa chọn DB", "Chọn DB nguồn trước."); return
-        if not self.owner.conn:
+        if not self.owner.connection_string:
             messagebox.showwarning("Chưa kết nối", "Chưa có kết nối SQL Server."); return
         if not self.timeline_rows:
             messagebox.showwarning("Chưa có timeline", "Nhấn 'Tải lịch sử sao lưu' trước."); return
@@ -498,18 +523,30 @@ class RestoreFrame(ctk.CTkFrame):
         # MOVE clause (khi restore sang DB mới + relocate)
         move_clause = ""
         if target_db != db and relocate:
-            cur = self.owner.conn.cursor()
             try:
-                cur.timeout = self.DEFAULT_QUERY_TIMEOUT
-            except Exception:
+                # kết nối tới CSDL
+                self.conn = self.owner._connect()
+                # Nếu chưa kết nối thì không làm gì cả
+                if not self.conn:
+                    return
+                
+                # Tạo con trỏ
+                with self.conn.cursor() as cursor:
+                    # Thực hiện truy vấn
+                    cursor.timeout = self.DEFAULT_QUERY_TIMEOUT
+
+                    cursor.execute("""
+                        SELECT logical_name, file_type, file_number, physical_name
+                        FROM msdb.dbo.backupfile bf
+                        WHERE bf.backup_set_id = ?
+                        ORDER BY file_type, file_number
+                    """, (info["base"].backup_set_id,))
+                    rows = cursor.fetchall()
+            except:
                 pass
-            cur.execute("""
-                SELECT logical_name, file_type, file_number, physical_name
-                FROM msdb.dbo.backupfile bf
-                WHERE bf.backup_set_id = ?
-                ORDER BY file_type, file_number
-            """, (info["base"].backup_set_id,))
-            rows = cur.fetchall()
+            finally:
+                self.conn.close()
+
             parts = []
             data_idx = 1
             log_idx  = 1
@@ -617,11 +654,11 @@ class RestoreFrame(ctk.CTkFrame):
 
         # Thực thi (autocommit + master)
         try:
-            base_conn = self.owner.conn
+            base_conn = self.owner._connect()
             if not base_conn:
                 messagebox.showwarning("Chưa kết nối", "Chưa có kết nối SQL Server."); return
 
-            conn_str = getattr(self.owner, "conn_str", None)
+            conn_str = getattr(self.owner, "connection_string", None)
             if conn_str:
                 cs = re.sub(r"(;|\A)\s*Database\s*=\s*[^;]*", "", conn_str, flags=re.I)
                 if not cs.endswith(";"):
@@ -666,6 +703,9 @@ class RestoreFrame(ctk.CTkFrame):
 
             if restore_cnx is not base_conn:
                 restore_cnx.close()
+
+            if base_conn:
+                base_conn.close()
 
             self._ok("Khôi phục hoàn tất.")
             messagebox.showinfo("Thành công", "Khôi phục hoàn tất.")

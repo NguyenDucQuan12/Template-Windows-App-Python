@@ -49,7 +49,6 @@ class ConnectionFrame(ctk.CTkFrame):
 
         # Biến lưu giữ kết nối tới DB
         self.conn: Optional[pyodbc.Connection] = None
-        self.conn_info: Dict[str, Any] = {}
 
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(1, weight=1)
@@ -220,10 +219,17 @@ class ConnectionFrame(ctk.CTkFrame):
         try:
             # Kết nối tới SQL Server
             conn = pyodbc.connect(connect_string)
-            # Lưu kết nối
-            self.conn = conn
-            self.owner.conn = conn  # chia sẻ cho toàn trang  
-
+            if conn is None:
+                logger.error(f"Không thể kết nối đến cơ sở dữ liệu. Vui lòng kiểm tra lại kết nối.")
+                
+                # Ẩn popup loading và hiển thị thông báo
+                self.loading.schedule_hide()
+                self.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"Không thể kết nối tới SQL Server."))
+                return
+            
+            # Đóng kết nối sau khi đã thành công
+            conn.close()
+            self.owner.connection_string = connect_string  # chia sẻ chuỗi kết nối tới cửa sổ gốc
             # Cập nhật thông tin lên giao diện chính
             self.after(0, self.update_after_connect_SQL_Server)
 
@@ -231,6 +237,8 @@ class ConnectionFrame(ctk.CTkFrame):
             self.loading.schedule_hide()
             self.after(0, lambda: messagebox.showinfo("Đã kết nối", f"Kết nối tới SQL Server thành công."))
         except Exception as e:
+            # Gán lại chuỗi kết nối là None
+            self.owner.connection_string = None
             # Hiện thị lỗi
             self.after(0, lambda err=e: self.update_after_connect_SQL_Server(success=False, error= str(err)))
 
@@ -264,10 +272,6 @@ class ConnectionFrame(ctk.CTkFrame):
         """
         Truy vấn danh sách Database và hiển thị lên frame bên phải
         """
-        # Nếu chưa kết nối thì không làm gì cả
-        if not self.conn:
-            return
-        
         # Khóa nút Tải lại, ko cho click liên tục
         self.btn_refresh.configure(state="disabled")
 
@@ -285,17 +289,23 @@ class ConnectionFrame(ctk.CTkFrame):
         Truy vấn danh sách Databse từ SQL Server đã kết nối
         """
         try:
+            # kết nối tới CSDL
+            self.conn = self.owner._connect()
+            # Nếu chưa kết nối thì không làm gì cả
+            if not self.conn:
+                return
+            
             # Tạo con trỏ
-            cur = self.conn.cursor()
-            # Thực hiện truy vấn
-            cur.execute("""
-                SELECT name, state_desc, recovery_model_desc
-                FROM sys.databases
-                WHERE database_id > 4  -- Các DB có id <= 4 là DB gốc: master, tempdb, model, msdb
-                ORDER BY name ASC
-            """)
-            # Lấy dữ liệu trả về
-            data = cur.fetchall()
+            with self.conn.cursor() as cursor:
+                # Thực hiện truy vấn
+                cursor.execute("""
+                    SELECT name, state_desc, recovery_model_desc
+                    FROM sys.databases
+                    WHERE database_id > 4  -- Các DB có id <= 4 là DB gốc: master, tempdb, model, msdb
+                    ORDER BY name ASC
+                """)
+                # Lấy dữ liệu trả về
+                data = cursor.fetchall()
 
             # Ẩn popup loading
             self.loading.schedule_hide()
@@ -307,6 +317,9 @@ class ConnectionFrame(ctk.CTkFrame):
             self.loading.schedule_hide()
             self.after(0, lambda err=e: self.insert_status(text=f"Xảy ra lỗi khi truy vấn thông tin database: \n{str(err)}"))
             self.after(0, lambda err=e: messagebox.showerror("Lỗi kết nối", f"Không thể lấy danh sách database") )
+        
+        finally:
+            self.conn.close()
     
     def insert_database_into_treeview(self, data):
         """
@@ -314,6 +327,12 @@ class ConnectionFrame(ctk.CTkFrame):
         """
         # Mở lại chức năng refresh
         self.btn_refresh.configure(state="normal")
+        
+        # Nếu ko có dữ liệu thì thông báo
+        if not data:
+            messagebox.showinfo("Không có dữ liệu", "Không tìm thấy danh sách CSDL từ SQL Server")
+            return
+        
         # Điền dữ liệu vào treeview
         for name, state, rm in data:
             self.tv.insert("", "end", values=(name, state, rm))

@@ -1,6 +1,6 @@
 {
   "connection": {
-    "driver": "ODBC Driver 18 for SQL Server",
+    "driver": "ODBC Driver 17 for SQL Server",
     "server": "localhost",
     "auth_mode": "windows",
     "username": null
@@ -9,6 +9,7 @@
     "backup_dir": null
   },
   "databases": [
+    "Docker",
     "Docker_DB",
     "DucQuanApp",
     "MBO_DB",
@@ -76,6 +77,24 @@
     },
     "TestDB": {
       "backup_dir": "E:/SQL_Backup\\",
+      "schedule": {
+        "full": "0 0 * * 0",
+        "diff": "30 0 * * 1-6",
+        "log": "*/15 * * * *"
+      },
+      "scheduler": {
+        "instance": ".\\SQLEXPRESS",
+        "stripes": 2,
+        "ps1_path": "C:\\Scripts\\Backup-Db.ps1",
+        "run_always": true,
+        "user": "",
+        "pass": "",
+        "sql_user": "",
+        "sql_pass": ""
+      }
+    },
+    "Docker": {
+      "backup_dir": "D:/Backup\\",
       "schedule": {
         "full": "0 0 * * 0",
         "diff": "30 0 * * 1-6",
