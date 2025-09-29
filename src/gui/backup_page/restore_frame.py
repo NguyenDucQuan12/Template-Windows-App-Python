@@ -1,9 +1,13 @@
 import os
 import re
 import pyodbc
+import threading
 import customtkinter as ctk
 from tkinter import ttk, messagebox
 from datetime import datetime
+
+
+from utils.modal_loading import ModalLoadingPopup
 
 class RestoreFrame(ctk.CTkFrame):
     """
@@ -23,6 +27,9 @@ class RestoreFrame(ctk.CTkFrame):
     def __init__(self, parent, owner_page):
         super().__init__(parent)
         self.owner = owner_page
+
+        # Popup loading
+        self.loading = ModalLoadingPopup(parent)
 
         # state
         self.current_db = None
@@ -155,7 +162,9 @@ class RestoreFrame(ctk.CTkFrame):
 
     def load_timeline(self):
         """Truy vấn msdb dựng timeline FULL/DIFF/LOG (cho DB hiện tại)."""
+        # Xóa danh sách cũ trong treeview
         self._clear_timeline()
+        # Lấy DB hiện tại
         db = self.current_db
         if not db:
             messagebox.showwarning("Chưa chọn DB", "Hãy chọn CSDL nguồn."); return
@@ -169,10 +178,11 @@ class RestoreFrame(ctk.CTkFrame):
             if not self.conn:
                 return
             
+            self.conn.timeout = self.DEFAULT_QUERY_TIMEOUT
+            
             # Tạo con trỏ
             with self.conn.cursor() as cursor:
                 # Thực hiện truy vấn
-                cursor.timeout = self.DEFAULT_QUERY_TIMEOUT
                 sql = r"""
                     SELECT
                         bs.backup_set_id,
@@ -305,11 +315,11 @@ class RestoreFrame(ctk.CTkFrame):
             if not self.conn:
                 return
             
+            self.conn.timeout = self.DEFAULT_QUERY_TIMEOUT
+            
             # Tạo con trỏ
             with self.conn.cursor() as cursor:
                 # Thực hiện truy vấn
-                cursor.timeout = self.DEFAULT_QUERY_TIMEOUT
-
                 sql = """
                     SELECT physical_device_name, family_sequence_number
                     FROM msdb.dbo.backupmediafamily
@@ -378,12 +388,13 @@ class RestoreFrame(ctk.CTkFrame):
         else:
             base_conn.autocommit = True
             cnx = base_conn
-
-        cur = cnx.cursor()
+        
         try:
-            cur.timeout = self.DEFAULT_QUERY_TIMEOUT
+            cnx.timeout = self.DEFAULT_QUERY_TIMEOUT
         except Exception:
             pass
+
+        cur = cnx.cursor()
 
         sql = f"RESTORE HEADERONLY FROM {clause}"
         cur.execute(sql)
@@ -530,11 +541,11 @@ class RestoreFrame(ctk.CTkFrame):
                 if not self.conn:
                     return
                 
+                self.conn.timeout = self.DEFAULT_QUERY_TIMEOUT
+                
                 # Tạo con trỏ
                 with self.conn.cursor() as cursor:
                     # Thực hiện truy vấn
-                    cursor.timeout = self.DEFAULT_QUERY_TIMEOUT
-
                     cursor.execute("""
                         SELECT logical_name, file_type, file_number, physical_name
                         FROM msdb.dbo.backupfile bf
@@ -653,10 +664,21 @@ class RestoreFrame(ctk.CTkFrame):
             return
 
         # Thực thi (autocommit + master)
+        self.loading.show()
+        threading.Thread(target= self.run_backup_in_thread, args=(full_sql, target_db), daemon=True).start()
+
+    def run_backup_in_thread(self, sql_query, target_db):
+        """
+        Thực thi câu lệnh backup trong 1 luồng riêng
+        """
         try:
+            # Kết nối đến DB
             base_conn = self.owner._connect()
             if not base_conn:
-                messagebox.showwarning("Chưa kết nối", "Chưa có kết nối SQL Server."); return
+                # Ẩn popup
+                self.loading.schedule_hide()
+                self.after(0, lambda:messagebox.showwarning("Chưa kết nối", "Chưa có kết nối SQL Server."))
+                return
 
             conn_str = getattr(self.owner, "connection_string", None)
             if conn_str:
@@ -668,18 +690,13 @@ class RestoreFrame(ctk.CTkFrame):
             else:
                 base_conn.autocommit = True
                 restore_cnx = base_conn
-                try:
-                    restore_cnx.timeout = self.DEFAULT_EXEC_TIMEOUT
-                except Exception:
-                    pass
 
-            cur = restore_cnx.cursor()
             try:
-                cur.timeout = self.DEFAULT_EXEC_TIMEOUT
+                restore_cnx.timeout = self.DEFAULT_EXEC_TIMEOUT
             except Exception:
                 pass
-
-            cur.execute(full_sql)
+            cur = restore_cnx.cursor()
+            cur.execute(sql_query)
 
             # Xả hết result-sets để batch chạy trọn vẹn
             while True:
@@ -692,14 +709,11 @@ class RestoreFrame(ctk.CTkFrame):
 
             # Kiểm chứng trạng thái
             vcur = restore_cnx.cursor()
-            try:
-                vcur.timeout = self.DEFAULT_QUERY_TIMEOUT
-            except Exception:
-                pass
+
             vcur.execute("SELECT state_desc, recovery_model_desc, user_access_desc FROM sys.databases WHERE name = ?", (target_db,))
             row = vcur.fetchone()
             if row:
-                self._ok(f"[{target_db}] state={row.state_desc}, recovery={row.recovery_model_desc}, access={row.user_access_desc}")
+                self.after(0, lambda:self._ok(f"[{target_db}] state={row.state_desc}, recovery={row.recovery_model_desc}, access={row.user_access_desc}"))
 
             if restore_cnx is not base_conn:
                 restore_cnx.close()
@@ -707,21 +721,25 @@ class RestoreFrame(ctk.CTkFrame):
             if base_conn:
                 base_conn.close()
 
-            self._ok("Khôi phục hoàn tất.")
-            messagebox.showinfo("Thành công", "Khôi phục hoàn tất.")
+            self.loading.schedule_hide()
+            self.after(0, lambda:messagebox.showinfo("Khôi phục thành công", f"CSDL {target_db} đã được khôi phục về thời gian chỉ định"))
 
         except pyodbc.Error as e:
             # Lấy thông tin lỗi sâu
             err_str = str(e)
-            sqlstate = getattr(e, 'args', [None])[0]
-            self._err(f"Lỗi ODBC/SQL: {err_str}")
+
+            self.after(0, lambda err = e:self._err(f"Lỗi ODBC/SQL: {err}"))
             if "4330" in err_str:
-                self._err("Mã 4330: Recovery path không khớp (fork/LSN). Hãy xem phần SUMMARY & Preflight.")
+                self.after(0, lambda:self._err("Mã 4330: Recovery path không khớp (fork/LSN). Hãy xem phần SUMMARY & Preflight."))
             elif "226" in err_str:
-                self._err("Mã 226: ALTER DATABASE không được phép trong multi-statement transaction. Hãy đảm bảo autocommit + Database=master (đã áp dụng).")
-            messagebox.showerror("Lỗi khôi phục", err_str)
+                self.after(0, lambda:self._err("Mã 226: ALTER DATABASE không được phép trong multi-statement transaction. Hãy đảm bảo autocommit + Database=master (đã áp dụng)."))
+
+            self.loading.schedule_hide()
+            self.after(0, lambda err =e:messagebox.showerror("Lỗi khôi phục", err))
+            return
 
         except Exception as e:
-            self._err(f"Lỗi không xác định: {e}")
-            messagebox.showerror("Lỗi khôi phục", str(e))
-
+            self.loading.schedule_hide()
+            self.after(0, lambda err = e:self._err(f"Lỗi không xác định: {err}"))
+            self.after(0, lambda err = e: messagebox.showerror("Lỗi khôi phục", err))
+            return

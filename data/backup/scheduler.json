@@ -105,8 +105,8 @@
         "stripes": 2,
         "ps1_path": "C:\\Scripts\\Backup-Db.ps1",
         "run_always": true,
-        "user": "",
-        "pass": "",
+        "user": "Admin",
+        "pass": "120201",
         "sql_user": "",
         "sql_pass": ""
       }

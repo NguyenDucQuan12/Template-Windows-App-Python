@@ -1170,11 +1170,13 @@ catch {{
             return False
 
     def _check_tasks(self):
+        # Lấy danh sách 3 loại tệp log: FULL, DIFF, LOG
         names = self._task_names()
+
         self._log("=== Kiểm tra Task Scheduler ===")
         for label, tname in [("FULL", names["FULL"]), ("DIFF", names["DIFF"]), ("LOG", names["LOG"])]:
             exists = self._task_exists(tname)
-            self._log(f"{label}: {tname} -> {'ĐÃ TỒN TẠI' if exists else 'CHƯA CÓ'}")
+            self._log(f"{label}: {tname} -> {'ĐÃ TỒN TẠI' if exists else 'CHƯA CÓ'}", clear= False)
         messagebox.showinfo("Kiểm tra task", "Đã hoàn tất quá trình kiểm tra.\nXem kết quả trong khung trạng thái bên dưới.")
 
     def _create_tasks_elevated(self):
@@ -1246,10 +1248,11 @@ catch {{
 
     # ================================ Utils ================================
 
-    def _log(self, s: str):
+    def _log(self, s: str, clear: bool = True):
         """Ghi 1 dòng vào khung trạng thái."""
         self.status_box.configure(state="normal")
-        self.status_box.delete("1.0", "end")
+        if clear:
+            self.status_box.delete("1.0", "end")
         self.status_box.insert("end", s + "\n")
         self.status_box.see("end")
         self.status_box.configure(state="disabled")
