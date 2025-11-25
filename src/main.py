@@ -16,6 +16,8 @@ from PIL import Image  # pip install pillow
 from tkinter import messagebox
 import logging
 import os
+import pystray  # pip install pystray
+from pystray import MenuItem as item
 import subprocess
 import time
 from packaging import version
@@ -150,7 +152,7 @@ class App(ctk.CTk):
         self.data_update_queue = queue.Queue()
 
         # Lắng nghe sự kiện đóng cửa sổ
-        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.protocol("WM_DELETE_WINDOW", self.hide_window)
 
         # # Kiểm tra cập nhật phần mềm từ server
         # self.get_information_from_server()
@@ -475,6 +477,9 @@ class App(ctk.CTk):
         self.deiconify()
         self.permission = permission
 
+        # Tạo tray_icon cho phần mềm nếu đã login thành công
+        self.create_tray_icon()
+
         # Kiểm tra cập nhật phần mềm từ server
         self.get_information_from_server()
 
@@ -501,6 +506,62 @@ class App(ctk.CTk):
         Đóng giao diện chính khi cửa sổ đăng nhập bị hủy giữa chừng
         """
         self.destroy()
+
+    # Tạo icon cho khay hệ thống bằng hình ảnh
+    def on_quit(self):
+        """
+        Hàm đóng ứng dụng ở khay hệ thống
+        """
+        def _quit():
+            if self.tray_icon:
+                self.tray_icon.stop
+
+        self.after(0, _quit)
+
+    def hide_window(self):
+        """
+        Ẩn giao diện máy chủ
+        """
+        self.after(0, self.withdraw)
+
+    def restore_window(self):
+        """
+        Hiển thị lại giao diện máy chủ
+        """
+        self.after(0, self.deiconify)
+
+    def quit_app_from_tray_icon(self):
+        """
+        Đóng ứng dụng từ khay hệ thống
+        """
+        self.after(0, self.destroy)
+
+    # Chạy icon trong thread riêng biệt
+    def icon_thread(self):
+        """
+        Chạy icon ứng dụng trong khay hệ thống
+        """
+        self.tray_icon.run()
+
+    def create_tray_icon(self):
+        """
+        Tạo trayicon ở khay hệ thống
+        """
+        # print("Khởi tạo tray icon")
+        # Tải hình ảnh từ tệp và sử dụng làm biểu tượng trong khay hệ thống
+        icon_image = Image.open(resource_path("assets\\images\\ico\\ico.ico"))
+
+        self.tray_icon = pystray.Icon(
+            "My_app",
+            icon_image,
+            "Hệ thống của tôi",  # Tên sẽ hiển thị khi di chuột qua icon
+            menu=pystray.Menu(
+                item('Khôi phục', self.restore_window),
+                item('Ẩn', self.hide_window),
+                item('Đóng chương trình', self.quit_app_from_tray_icon)
+            )
+        )
+        threading.Thread(target=self.icon_thread, daemon=True).start()
 
 def run_app():
     exe_name = f"{APP_NAME_SYSTEM}.exe"  # Thay đổi thành tên tệp .exe của bạn
