@@ -140,6 +140,22 @@ class LoginWindow(ctk.CTkToplevel):
                         corner_radius=15, command= self.check_login)
         login_btn.grid(row=4,column=0,sticky="ne",pady=20, padx=35)
 
+        # Phương thức đăng nhập khác
+        another_login = ctk.CTkLabel(master=self.login_frame, text="Hoặc đăng nhập bằng:", font=("",15), text_color="black", anchor= "center")
+        another_login.grid(row=5,column=0, padx= (0,10))
+
+        #Google login
+        g_logo = ctk.CTkImage(Image.open(resource_path("assets\\images\\login_img\\google_logo.png")).resize((20, 20), Image.LANCZOS))
+        self.g_button = ctk.CTkButton(master=self.login_frame, width=100, image=g_logo, text="Google", corner_radius=6, fg_color="white", 
+                                      text_color="black", compound="left", hover_color="#f0f0f0", anchor="w", cursor="hand2", command= self.not_available)
+        self.g_button.grid(row=6,column=0,sticky="w",pady=(0,20), padx=35)
+
+        #Facebook login
+        fb_logo = ctk.CTkImage(Image.open(resource_path("assets\\images\\login_img\\fb_logo.png")).resize((20, 20), Image.LANCZOS))
+        self.fb_button = ctk.CTkButton(master=self.login_frame, width=100, image=fb_logo, text="Facebook", corner_radius=6, fg_color="white", 
+                                       text_color="black", compound="left", hover_color="#f0f0f0", anchor="w", cursor="hand2", command= self.not_available)
+        self.fb_button.grid(row=6,column=0,sticky="e",pady=(0,20), padx=35)
+
     def open_forgot_password_frame(self, event=None):
         """
         Tạo một frame để thực hiện thay đổi mật khẩu
@@ -747,6 +763,10 @@ class LoginWindow(ctk.CTkToplevel):
                 self.loading_label.unload()
             # Destroy popup
             self.loading_popup.destroy() 
+
+    def not_available(self):
+        messagebox.showinfo("Thông báo", "Chức năng đang trong chế độ bảo trì! \nVui lòng thử lại sau.")
+        return
 
 if __name__ == "__main__":
     app = ctk.CTk()
