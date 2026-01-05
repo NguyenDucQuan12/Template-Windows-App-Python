@@ -1,7 +1,8 @@
 import pyodbc
 import logging
 import re
-from datetime import datetime, timedelta
+import hashlib
+import secrets
 
 
 # Mở comment 3 dòng bên dưới mỗi khi test (Chạy trực tiếp hàm if __main__)
@@ -113,6 +114,156 @@ class My_Database:
 
         # Trả về kết quả cuối cùng
         return response
+    
+    def _execute_non_query(self, query, params=None):
+        """
+        Thực thi INSERT/UPDATE/DELETE.
+        """
+        response = {
+                    "success": False,
+                    "message": ""
+        }
+
+        conn = self._connect()                                 # Kết nối DB
+        if conn:
+            try:
+                with conn.cursor() as cursor:                  # Tạo cursor
+                    if params:
+                        cursor.execute(query, params)          # Thực thi có tham số
+                    else:
+                        cursor.execute(query)                  # Thực thi không tham số
+
+                    conn.commit()                              # Ghi thay đổi
+
+                response["success"] = True                     # Đánh dấu thành công
+                response["message"] = "Thực thi thành công."
+            except Exception as e:
+                response["message"] = f"Lỗi non-query: {str(e)}."
+            finally:
+                conn.close()                                   # Luôn đóng kết nối
+        else:
+            response["message"] = "Không thể kết nối tới CSDL."
+
+        return response
+    
+    # ---------------- Google / Facebook lookup ----------------
+
+    def get_user_by_google(self, google_id: str | None, email: str | None):
+        """
+        Lấy user theo Google → map theo Email.
+        """
+        # Gọi Procedure để lấy user
+        query = "EXEC usp_GetUserByGoogle @GoogleId = ?, @Email = ?"
+        params = (google_id, email)
+        return self._execute_query(query, params)
+
+    def get_user_by_facebook(self, facebook_id: str | None, email: str | None):
+        """
+        Lấy user theo Facebook → map theo Email.
+        """
+        query = "EXEC usp_GetUserByFacebook @FacebookId = ?, @Email = ?"
+        params = (facebook_id, email)
+        return self._execute_query(query, params)
+    
+    def create_user_if_not_exists_google(self, user_name: str, email: str):
+        """
+        Tạo user nội bộ nếu chưa tồn tại (Google first login).
+
+        SP sẽ:
+        - kiểm tra email có tồn tại không
+        - nếu chưa có thì INSERT
+        - trả lại record user
+        """
+        query = "EXEC usp_CreateUserIfNotExists_Google @UserName = ?, @Email = ?"
+        params = (user_name, email)
+        return self._execute_query(query, params)
+
+    def link_google_login_if_not_exists(self, user_email: str, google_id: str, provider_email: str):
+        """
+        Tạo mapping Google trong UserExternalLogin nếu chưa có.
+        """
+        query = """
+            EXEC usp_LinkExternalLoginIfNotExists
+                @UserEmail = ?,
+                @Provider = ?,
+                @ProviderUserId = ?,
+                @ProviderEmail = ?
+        """
+        params = (user_email, "google", google_id, provider_email)
+        return self._execute_query(query, params)
+
+    # ---------------- Remember me 30 days ----------------
+
+    def create_session_by_email(self, email: str, days: int = 30, device_info: str | None = None):
+        """
+        Tạo session 30 ngày theo Email.
+        - Sinh raw token
+        - Hash raw token
+        - Lưu TokenHash vào DB
+        - Trả raw token cho client lưu local
+        """
+        raw_token = secrets.token_urlsafe(32)                  # Token ngẫu nhiên an toàn
+        token_hash = hashlib.sha256(                           # Hash để lưu DB
+            raw_token.encode("utf-8")
+        ).hexdigest()
+
+        query = """
+            INSERT INTO UserSessions(UserEmail, TokenHash, ExpiresAt, DeviceInfo)
+            VALUES (?, ?, DATEADD(DAY, ?, SYSUTCDATETIME()), ?)
+        """
+        params = (email, token_hash, days, device_info)
+
+        result = self._execute_non_query(query, params)        # Thực thi INSERT
+
+        if not result["success"]:
+            return {"success": False, "message": result["message"], "token": None}
+
+        return {"success": True, "message": "Tạo session thành công.", "token": raw_token}
+
+
+    def get_user_by_session(self, session_token: str):
+        """
+        Kiểm tra session token để auto login.
+        """
+        token_hash = hashlib.sha256(                           # Hash lại giống lúc lưu
+            session_token.encode("utf-8")
+        ).hexdigest()
+
+        query = "EXEC usp_GetUserBySession @TokenHash = ?"
+        params = (token_hash,)
+        return self._execute_query(query, params)
+    
+    def create_user_if_not_exists_external(self, user_name: str, email: str):
+        """
+        Tạo user nội bộ nếu chưa tồn tại.
+        Dùng chung cho Google/Facebook để tránh trùng code.
+        """
+        query = "EXEC usp_CreateUserIfNotExists_External @UserName = ?, @Email = ?"
+        params = (user_name, email)
+        return self._execute_query(query, params)
+
+    def link_facebook_login_if_not_exists(self, user_email: str, facebook_id: str, provider_email: str | None):
+        """
+        Tạo mapping Facebook nếu chưa có.
+        """
+        query = """
+            EXEC usp_LinkExternalLoginIfNotExists
+                @UserEmail = ?,
+                @Provider = ?,
+                @ProviderUserId = ?,
+                @ProviderEmail = ?
+        """
+        params = (user_email, "facebook", facebook_id, provider_email)
+        return self._execute_query(query, params)
+    
+    def update_last_login_at(self, email: str):
+        """
+        Cập nhật LastLoginAt cho user.
+        Dùng SP để đảm bảo thống nhất và dễ quản lý bảo mật.
+        """
+        query = "EXEC usp_UpdateLastLoginAt @Email = ?"
+        params = (email,)
+        return self._execute_non_query(query, params)
 
 # ------------------ Bảng Users ------------------
 # Bởi vì User là 1 từ khóa đã định nghĩa nên cần cho nó vào ngoặc vuông để hiểu đó là tên bảng: FROM [User]
@@ -132,7 +283,7 @@ class My_Database:
         """
         Truy vấn thông tin tất cả người dùng.
         """
-        query = "SELECT User_Name, Email, Activate, Privilege, OTP, Expired_OTP FROM Users"
+        query = "SELECT User_Name, Email, IsActive, ActivatedAt, Privilege FROM Users"
         result = self._execute_query(query)
 
         # Trả về kết quả rõ ràng
@@ -153,7 +304,7 @@ class My_Database:
         """
         Lấy mật khẩu, salt mã hóa và quyền hạn của người dùng
         """
-        query = "SELECT Password, Salt_Password, Activate, Privilege FROM Users WHERE Email = ?"
+        query = "SELECT PasswordHash, PasswordSalt, IsActive, ActivatedAt, Privilege FROM Users WHERE Email = ?"
         params = (email,)
         result = self._execute_query(query, params)
 
@@ -189,13 +340,14 @@ class My_Database:
                     if activate:
                         activate_user_query = """
                             UPDATE Users
-                            SET Activate = GETDATE()
+                            SET ActivatedAt = GETDATE(),
+                                IsActive = 1
                             WHERE Email = ? 
                         """
                     else:
                         activate_user_query = """
                             UPDATE Users
-                            SET Activate = NULL
+                            SET IsActive = 0
                             WHERE Email = ? 
                         """
                     params_update = (email,)
@@ -233,14 +385,14 @@ class My_Database:
         }
         
         # Mã hóa mật khẩu trước khi đưa vào CSDL
-        salt_password, password_hashed = Hash.scrypt(password = password)
+        password_salt, password_hashed = Hash.scrypt(password = password)
 
         # Bởi vì User là 1 từ khóa đã định nghĩa nên cần cho nó vào ngoặc vuông để hiểu đó là tên bảng
         query = """
-            INSERT INTO Users (User_Name, Email, Password, Salt_Password, Privilege)
+            INSERT INTO Users (User_Name, Email, PasswordHash, PasswordSalt, Privilege)
             VALUES (?, ?, ?, ?, ?)
         """
-        params = (username, email, password_hashed, salt_password, privilege)
+        params = (username, email, password_hashed, password_salt, privilege)
         conn = self._connect()
         if conn:
             try:
@@ -290,7 +442,7 @@ class My_Database:
                     # Cập nhật mật khẩu người dùng
                     update_password_query = """
                         UPDATE Users
-                        SET Password = ?, Salt_Password = ?
+                        SET PasswordHash = ?, PasswordSalt = ?
                         WHERE Email = ? 
                     """
                     params_update = (password_hashed, salt_password, email)
