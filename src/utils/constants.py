@@ -58,6 +58,7 @@ COLOR = {
 HOME_NAV = "Trang chủ"
 CHAT_NAV = "Trò chuyện"
 DATABASE_NAV = "Cơ sở dữ liệu"
+LOGOUT_NAV = "Đăng xuất"
 
 # Quyền hạn
 PERMISSION = {
@@ -85,10 +86,12 @@ IMAGE = {
     "CHAT_NAVIGATION_DARK_IMG": "assets\\images\\navigation\\chat_dark.png",
     "DATABASE_NAVIGATION_LIGHT_IMG": "assets\\images\\navigation\\database_light.png",
     "DATABASE_NAVIGATION_DARK_IMG": "assets\\images\\navigation\\database_dark.png",
+    "LOGOUT_LIGHT_IMG": "assets\\images\\navigation\\logout_light.png",
+    "LOGOUT_DARK_IMG": "assets\\images\\navigation\\logout_dark.png",
 }
 
 
 # Danh sách các cột trong bảng người dùng
 ACCOUNT_TABLE_COLUMN_LIST = [
-    "Người dùng", "Tài khoản", "Ngày kích hoạt", "Quyền hạn", "Mã OTP", "Thời gian hết hạn"
+    "Người dùng", "Tài khoản", "Trạng thái", "Ngày kích hoạt", "Quyền hạn"
 ]
