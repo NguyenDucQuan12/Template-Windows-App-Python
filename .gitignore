@@ -13,7 +13,10 @@ __pycache__/
 # Bỏ qua thư mục output khi xuất exe
 output/
 
-
+# Tệp cấu hình đăng nhập bằng google và facebook
+assets/config/google_client_secret.json
+assets/config/facebook_app_secret.json
+.env
 
 
 # Nếu tệp tin đã đẩy lên git rồi thì dùng câu lệnh sau xóa nó khỏi cache trước khi thêm nó vào gitignore :
