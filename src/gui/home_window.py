@@ -272,6 +272,7 @@ class HomePage(customtkinter.CTkFrame):
         Truy vấn thông tin người dùng trong một luồng riêng
         """
         try:
+            # Truy vấn thông tin tất cả người dùng
             results = self.db.get_information_all_user()
             
             # Nếu là False thì sẽ là lỗi trong khi truy vấn
@@ -305,16 +306,16 @@ class HomePage(customtkinter.CTkFrame):
             for i, row in enumerate(data):
                 processed_row = []  # Danh sách mới để lưu giá trị đã xử lý cho mỗi hàng
 
-                # Xử lý các giá trị cho mỗi cột trong row
-                # for index, value in enumerate(row):
-                #     # Kiểm tra và thay thế giá trị None cho cột "Bo Phan"
-                #     if TABLE_COLUMN_LIST_EMPLOYEE_REGISTER[index] == "Bo Phan" and value is None:
-                #         processed_row.append("JP")  # Thay thế None ở cột "BoPhan" bằng "JP"
-                #     # Kiểm tra và thay thế giá trị None cho các cột khác
-                #     # elif value is None:
-                #     #     processed_row.append(0)  # Thay thế None ở các cột khác bằng 0
-                #     else:
-                #         processed_row.append(value)  # Nếu không phải None, giữ nguyên giá trị
+                # Xử lý từng cột giá trị trong 1 hàng dữ liệu
+                for index, value in enumerate(row):
+                    # Kiểm tra và thay thế giá trị None cho cột "Bo Phan"
+                    if ACCOUNT_TABLE_COLUMN_LIST[index] == "Mã OTP" and value is None:
+                        processed_row.append("JP")  # Thay thế None ở cột "BoPhan" bằng "JP"
+                    # Kiểm tra và thay thế giá trị None cho các cột khác
+                    # elif value is None:
+                    #     processed_row.append(0)  # Thay thế None ở các cột khác bằng 0
+                    else:
+                        processed_row.append(value)  # Nếu không phải None, giữ nguyên giá trị
 
                 # Thêm hàng đã xử lý vào danh sách processed_rows
                 processed_rows.append(tuple(processed_row))  # Thêm processed_row dưới dạng tuple vào processed_rows
