@@ -1,8 +1,18 @@
 {
     "Login": [
         {
+            "email": "bmd1eWVuZHVjcXVhbjIwMDFAZ21haWwuY29t",
+            "password": null,
+            "provider": "local",
+            "session_token": "pe1ZB4MO5pTG8zVmsCm1pfVpqMM6pRTF_cuslksM3Xo",
+            "last_login_ts": "2025-12-14T15:28:34.382669"
+        },
+        {
             "email": "dGVzdA==",
-            "password": "dGVzdA=="
+            "password": "dGVzdA==",
+            "provider": "local_test",
+            "session_token": null,
+            "last_login_ts": "2025-12-14T13:47:30.553747"
         }
     ]
 }
