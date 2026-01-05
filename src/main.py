@@ -138,6 +138,13 @@ class App(ctk.CTk):
                 required_permissions=(PERMISSION["ADMIN"], PERMISSION["USER"]),
                 frame_class=DatabasePage
             ),
+            LOGOUT_NAV: NavItem(
+                name=LOGOUT_NAV,
+                icon_light="LOGOUT_LIGHT_IMG",
+                icon_dark="LOGOUT_DARK_IMG",
+                required_permissions=(PERMISSION["ADMIN"], PERMISSION["USER"], PERMISSION["GUEST"]),
+                frame_class=None  # Logout không có frame
+            ),
         }
 
         # Kho chứa: nút điều hướng và frame đã tạo (lazy)
@@ -166,8 +173,6 @@ class App(ctk.CTk):
 
         # Mở cửa sổ đăng nhập
         self.open_window_login()
-
-        self.mainloop()
 
     def create_navigation(self):
         """
@@ -221,12 +226,32 @@ class App(ctk.CTk):
         # Khoảng đệm đẩy option "appearance" xuống cuối
         self.navigation_frame.grid_rowconfigure(row_idx, weight=1)
 
+        # ---------- Tạo nút Đăng xuất ở gần đáy ----------
+        logout_item = self.nav_items.get(LOGOUT_NAV)
+        if logout_item:
+            light_img = Image.open(resource_path(IMAGE[logout_item.icon_light]))
+            dark_img  = Image.open(resource_path(IMAGE[logout_item.icon_dark]))
+            logout_icon = ctk.CTkImage(light_image=light_img, dark_image=dark_img, size=(20, 20))
+
+            self.logout_button = ctk.CTkButton(
+                self.navigation_frame,
+                corner_radius=0, height=40, border_spacing=10,
+                text=LOGOUT_NAV, image=logout_icon, anchor="w",
+                fg_color="transparent",
+                text_color=("gray10", "gray90"),
+                hover_color=("gray70", "gray30"),
+                command=self.logout                        # gọi thẳng hàm logout
+            )
+            # Đặt ở dưới spacer
+            self.logout_button.grid(row=row_idx + 1, column=0, sticky="ew")
+            self.nav_buttons[LOGOUT_NAV] = self.logout_button
+
         # Menu đổi theme
         self.appearance_mode_menu = ctk.CTkOptionMenu(
             self.navigation_frame, values=["Dark", "Light", "System"],
             command=self.change_appearance_mode_event
         )
-        self.appearance_mode_menu.grid(row=row_idx + 1, column=0, padx=20, pady=20, sticky="s")
+        self.appearance_mode_menu.grid(row=row_idx + 2, column=0, padx=20, pady=20, sticky="s")
 
         # Mặc định dark
         ctk.set_appearance_mode("dark")
@@ -236,6 +261,128 @@ class App(ctk.CTk):
         Thay đổi chế độ sáng/tối của chương trình
         """
         ctk.set_appearance_mode(new_appearance_mode)
+
+    def logout(self, forget_device: bool = False):
+        """
+        Đăng xuất khỏi ứng dụng.
+
+        forget_device:
+            - False: Đăng xuất nhưng vẫn giữ session_token trong config (lần sau có thể auto login).
+            - True : Đăng xuất và "quên thiết bị":
+                    + Xóa session_token trong JSON
+                    + (Khuyến nghị) revoke session trong DB để token đó không dùng lại được.
+        """
+        # Hỏi xác nhận
+        ok = messagebox.askyesno("Đăng xuất", "Bạn có chắc chắn muốn đăng xuất không?")
+        if not ok:
+            return
+
+        # Nếu muốn quên thiết bị -> xoá session_token local + revoke DB
+        if forget_device:
+            try:
+                self._forget_local_session_and_revoke_db()
+            except Exception as e:
+                logger.error("Lỗi khi quên thiết bị: %s", str(e))
+
+        # Reset trạng thái quyền và nav
+        self.permission = None                # xoá quyền hiện tại
+        self.active_nav = None                # không còn tab active
+
+        # Ẩn tất cả frame đang hiển thị để tránh "leak" UI khi quay lại login
+        for name, frame in self.frames.items():
+            try:
+                frame.grid_forget()
+            except Exception:
+                pass
+
+        # Ẩn cửa sổ chính trước khi mở login
+        self.withdraw()
+
+        # Mở lại cửa sổ đăng nhập
+        self.open_window_login()
+
+    def _forget_local_session_and_revoke_db(self):
+        """
+        Quên thiết bị:
+        - Lấy account đăng nhập gần nhất trong config
+        - Nếu có session_token -> revoke session trên DB (nếu có API)
+        - Xóa session_token trong config để lần sau không auto login nữa
+        """
+        accounts = self.load_account_login()
+        if not accounts:
+            return
+
+        # Lọc account có session_token
+        with_session = [a for a in accounts if a.get("session_token")]
+        if not with_session:
+            return
+
+        # Parse last_login_ts để chọn gần nhất
+        from datetime import datetime
+
+        def _parse_ts(acc):
+            ts = acc.get("last_login_ts")
+            if not ts:
+                return datetime.min
+            try:
+                return datetime.fromisoformat(ts)
+            except Exception:
+                return datetime.min
+
+        latest_acc = max(with_session, key=_parse_ts)
+
+        session_token = latest_acc.get("session_token")
+        if not session_token:
+            return
+
+        # 1) Revoke session trên DB (khuyến nghị: xóa TokenHash khỏi bảng UserSessions)
+        #    Nếu bạn chưa có hàm này, bạn nên bổ sung:
+        #    database.revoke_session(session_token)
+        try:
+            if hasattr(self, "database") and hasattr(self.database, "revoke_session"):
+                self.database.revoke_session(session_token)
+        except Exception as e:
+            logger.warning("Không thể revoke session trong DB: %s", str(e))
+
+        # Xóa token khỏi account local
+        latest_acc["session_token"] = None
+
+        # Ghi lại toàn bộ list về file config
+        self._save_login_accounts(accounts)
+
+    def _save_login_accounts(self, accounts: list[dict]):
+        """
+        Ghi đè danh sách accounts vào CONFIG_FILE.
+        Dùng khi cần xóa token hoặc cập nhật hàng loạt.
+        """
+        config_data = {"Login": accounts}
+
+        with open(FILE_PATH["LOGIN_CONFIG"], "w", encoding="utf-8") as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=4)
+
+    def load_account_login(self):
+        """
+        Tải thông tin CSDL đã đăng nhập trước đây theo thứ tự thời gian đăng nhập gần nhất từ tệp JSON.
+        Trả về danh sách các dict tài khoản đã lưu.
+        """
+        if os.path.exists(FILE_PATH["LOGIN_CONFIG"]):
+            try:
+                with open(FILE_PATH["LOGIN_CONFIG"], 'r', encoding='utf-8') as f:
+                    # Đọc dữ liệu từ tệp json
+                    config_data = json.load(f)
+                    # Sắp xếp danh sách theo last_login_ts giảm dần
+                    if 'Login' in config_data:
+                        config_data['Login'].sort(
+                            key=lambda acc: acc.get('last_login_ts') or '',
+                            reverse=True
+                        )
+                # Trả về danh sách tài khoản đã sắp xếp theo thời gian đăng nhập gần nhất
+                return config_data.get('Login', [])
+            except Exception as e:
+                # logger.error(f"Lỗi khi tải cấu hình kết nối: {e}")
+
+                return []
+        return []
 
     def get_information_from_server(self):
         """
@@ -573,6 +720,7 @@ def run_app():
     else:
         # Tiến hành mở giao diện phần mềm
         app = App()
+        app.mainloop()
 # Ví dụ chạy thử:
 if __name__ == "__main__":
 
