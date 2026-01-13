@@ -19,7 +19,7 @@ def resource_path(relative_path):
         # Kiểm tra đuôi tệp tin
         if full_path.endswith(('.png', '.jpg', '.jpeg', '.ico')):
             # Nếu là hình ảnh thì trả về đường dẫn mặc định
-            return IMAGE["DEFAULT_IMG"]
+            return os.path.join(base_path, IMAGE["DEFAULT_IMG"])
         
         # Nếu không phải là hình ảnh thì trả về none
         else:

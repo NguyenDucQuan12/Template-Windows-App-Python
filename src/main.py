@@ -147,6 +147,16 @@ class App(ctk.CTk):
             ),
         }
 
+        self.logout_items: Dict[str, NavItem] = {
+            LOGOUT_NAV: NavItem(
+                name=LOGOUT_NAV,
+                icon_light="LOGOUT_LIGHT_IMG",
+                icon_dark="LOGOUT_DARK_IMG",
+                required_permissions=(PERMISSION["ADMIN"], PERMISSION["USER"], PERMISSION["GUEST"]),
+                frame_class=None  # Logout không có frame
+            ),
+        }
+
         # Kho chứa: nút điều hướng và frame đã tạo (lazy)
         self.nav_buttons: Dict[str, ctk.CTkButton] = {}
         self.frames: Dict[str, CTkFrameType] = {}   # <== chỉ tạo khi show lần đầu
@@ -227,7 +237,8 @@ class App(ctk.CTk):
         self.navigation_frame.grid_rowconfigure(row_idx, weight=1)
 
         # ---------- Tạo nút Đăng xuất ở gần đáy ----------
-        logout_item = self.nav_items.get(LOGOUT_NAV)
+        # Khai báo thông tin nút đăng xuất
+        logout_item = self.logout_items[LOGOUT_NAV]
         if logout_item:
             light_img = Image.open(resource_path(IMAGE[logout_item.icon_light]))
             dark_img  = Image.open(resource_path(IMAGE[logout_item.icon_dark]))
@@ -244,7 +255,7 @@ class App(ctk.CTk):
             )
             # Đặt ở dưới spacer
             self.logout_button.grid(row=row_idx + 1, column=0, sticky="ew")
-            self.nav_buttons[LOGOUT_NAV] = self.logout_button
+            # self.nav_buttons[LOGOUT_NAV] = self.logout_button     # Không thêm vào nav_buttons vì ko cần highlight, và khi duyêt nav ko cần check quyền
 
         # Menu đổi theme
         self.appearance_mode_menu = ctk.CTkOptionMenu(
