@@ -137,14 +137,7 @@ class App(ctk.CTk):
                 icon_dark ="DATABASE_NAVIGATION_DARK_IMG",
                 required_permissions=(PERMISSION["ADMIN"], PERMISSION["USER"]),
                 frame_class=DatabasePage
-            ),
-            LOGOUT_NAV: NavItem(
-                name=LOGOUT_NAV,
-                icon_light="LOGOUT_LIGHT_IMG",
-                icon_dark="LOGOUT_DARK_IMG",
-                required_permissions=(PERMISSION["ADMIN"], PERMISSION["USER"], PERMISSION["GUEST"]),
-                frame_class=None  # Logout không có frame
-            ),
+            )
         }
 
         self.logout_items: Dict[str, NavItem] = {
@@ -255,7 +248,7 @@ class App(ctk.CTk):
             )
             # Đặt ở dưới spacer
             self.logout_button.grid(row=row_idx + 1, column=0, sticky="ew")
-            # self.nav_buttons[LOGOUT_NAV] = self.logout_button     # Không thêm vào nav_buttons vì ko cần highlight, và khi duyêt nav ko cần check quyền
+            # self.nav_buttons[LOGOUT_NAV] = self.logout_button     # Không thêm vào nav_buttons vì ko cần highlight, và khi duyêt nav ko cần check quyền, ai cũng có thể thấy
 
         # Menu đổi theme
         self.appearance_mode_menu = ctk.CTkOptionMenu(
