@@ -48,6 +48,18 @@ Tại đây có thể `kích hoạt tài khoản`, `Xóa tài khoản`, `Thay đ
 > **Python**: từ 3.12 trở lên  
 > **Database**: SQL Server  
 > **Công cụ lập trình**: Visual Studio Code  
+> ## Cài đặt driver ODBC cho từng thiết bị sử dụng phần mềm!  
+
+Để chương trình có thể kết nối với `SQL Server` ta cần sử dụng `driver ODBC`. Driver được tải trực tiếp từ `Microsoft`.
+
+Đầu tiên ta cần sao chép dự án này về máy tính, ta có thể download hoặc clone nó về và đặt tên thư mục tương ứng.  
+Sau đó mở thư mục này lên và thêm nó vào `workspace` của Visual studio code bằng chức năng `Add Folder To Workspace`. Ta sẽ được như sau:  
+
+![image](assets/github/images/add_folder_to_workspace.png)
+
+Tất cả các thao tác lệnh được thực hiện trên `Terminal` của `Visual studio code`  
+
+![image](assets/github/images/terminal_vscode.png)
 
 # 1. Tạo môi trường ảo
 
@@ -86,14 +98,9 @@ Khởi động chương trình bằng `Terminal` của `VS code`:
 python src/main.py
 ```
 
-# 2. Tạo CSDL
+# 2. Tạo CSDL  
 
-> [!NOTE]  
-> ## Cài đặt driver ODBC cho từng thiết bị!  
-
-Để có thể kết nối được `Python` với `SQL Server` ta cần sử dụng `driver ODBC`. Driver được tải trực tiếp từ `Microsoft`.  
-
-Mở `SQL Server Management Studio (SSMS)` kết nối tới `Database`, rồi `New Query`.  
+Mở `SQL Server Management Studio (SSMS)` kết nối tới `Database`, rồi chọn `New Query`.  
 
 ![image](assets/github/images/open_new_query_ssms.png)
 
@@ -110,19 +117,24 @@ Sau khi tạo xong Database ta cần chuyển đến `DucQuanApp` thì mới có
 -- Chuyển vào database DucQuanApp
 USE DucQuanApp
 ```
-Sau đó ta tiến hành tạo bảng chứa thông tin đăng nhập có tên là `Users` và các trường thông tin cần thiết:  
+
+## 2.1 Tạo bảng Users
+
+Sau đó ta tiến hành tạo bảng chứa thông tin người dùng và đăng nhập có tên là `Users` và các trường thông tin cần thiết:  
 ```SQL
 -- Tạo bảng Users
 CREATE TABLE Users (
-	User_Name NVARCHAR(500),
-	Email NVARCHAR(500) UNIQUE, --Ràng buộc Email là duy nhất trong bảng
-	Password NVARCHAR(500),
-	Salt_Password NVARCHAR(500),
-	Activate DATETIME,
-	Privilege NVARCHAR(500),
-	OTP NVARCHAR(80),
-	Expired_OTP DATETIME,
-	Status NVARCHAR(200)
+	UserName NVARCHAR(200),
+	Email NVARCHAR(320) UNIQUE, --Ràng buộc Email là duy nhất trong bảng
+	PasswordHash NVARCHAR(500),
+	PasswordSalt NVARCHAR(500),
+	IsActivate BIT,
+	ActivatedAt datetime2(7),
+	Privilege NVARCHAR(50),
+	Status NVARCHAR(50),
+	CreatedAt datetime2(7),
+	UpdatedAt datetime2(7),
+	LastLoginAt datetime2(7)
 )
 ```
 ![image](assets/github/images/create_table_database.png)
@@ -134,19 +146,24 @@ ALTER TABLE Users
 ADD CONSTRAINT UQ_Email UNIQUE (Email)
 ```
 
+Tạo index để tăng tốc độ tìm kiếm dựa trên email người dùng  
+```SQL
+CREATE UNIQUE INDEX UX_Users_Email
+ON dbo.Users(Email);
+```
+
 Sau khi đã có bảng thì thêm 1 dòng dữ liệu ban đầu để đăng nhập:  
 ```SQL
 -- Thêm dữ liệu mới vào bảng
 INSERT INTO Users
 (
-    User_Name,
+    UserName,
     Email,
-    Password,
-    Salt_Password,
-    Activate,
+    PasswordHash,
+    PasswordSalt,
+    IsActivate,
+    ActivateAt,
     Privilege,
-    OTP,
-    Expired_OTP,
     Status
 )
 VALUES (
@@ -154,16 +171,299 @@ VALUES (
     'nguyenducquan2001@gmail.com',
     '152a4a4f24e8481810b9b01c1ef148034f38c17fb40175e29201b767906558f455032735d0f144f052bd10bac553191dbd02c8d3d3c594023c8517ea72f47955',
     'ca5e4c62a549cbe349b5cb78822ad671',
+    1,
     GETDATE(), -- Lấy thời gian hiện tại
     'Admin',
-    'hst283r',
-    DATEADD(HOUR, 1, GETDATE()), -- Thêm thời gian 1 tiếng cho thời gian hiện tại
-    NULL
+    'Active',
 )
 ```
 
 > Lưu ý giá trị 2 trường `Password` và `Salt_Password` phải tuân thủ cách mã hóa ở [tệp mã hóa](src/services/hash.py).  
 > Ví dụ mật khẩu phía trên là: `123456789`  
+
+## 2.2 Tạo bảng AuthSession
+
+Tiếp theo tạo bảng `AuthSession` để lưu trữ các phiên đăng nhập  
+```SQL
+-- 1. Tạo bảng cấu trúc chuẩn hóa cho phiên đăng nhập
+CREATE TABLE dbo.AuthSession (
+    SessionId bigint IDENTITY(1,1) NOT NULL,
+    UserEmail nvarchar(256) NOT NULL,
+    TokenHash binary(32) NOT NULL,
+    CreatedAt datetime2(7) NOT NULL,
+    ExpiresAt datetime2(7) NOT NULL,
+    RevokedAt datetime2(7) NULL,
+    DeviceInfo nvarchar(256) NULL,
+
+    -- Định nghĩa các Ràng buộc (Constraints)
+    CONSTRAINT PK_AuthSession PRIMARY KEY CLUSTERED (SessionId),
+    CONSTRAINT FK_AuthSession_User FOREIGN KEY (UserEmail) REFERENCES dbo.Users(Email),
+    CONSTRAINT CK_AuthSession_Expiry CHECK (ExpiresAt > CreatedAt),
+    CONSTRAINT UQ_AuthSession_TokenHash UNIQUE (TokenHash),
+    CONSTRAINT DF_AuthSession_Created DEFAULT SYSUTCDATETIME() FOR CreatedAt
+);
+
+-- 2. Tạo các chỉ mục (Indexes) tối ưu hiệu năng
+-- Index tìm kiếm phiên hoạt động theo User và sắp xếp theo Session mới nhất
+CREATE INDEX IX_AuthSession_UserActive 
+    ON dbo.AuthSession (UserEmail, SessionId DESC)
+    INCLUDE (ExpiresAt, CreatedAt, DeviceInfo) 
+    WHERE RevokedAt IS NULL;
+
+-- Index phục vụ cho việc dọn dẹp các token đã hết hạn (Cron job/Clean up)
+CREATE INDEX IX_AuthSession_Expiry 
+    ON dbo.AuthSession (ExpiresAt);
+
+-- Index phục vụ tìm kiếm các phiên đã bị hủy (Filtered Index)
+CREATE INDEX IX_AuthSession_Revoked 
+    ON dbo.AuthSession (RevokedAt) 
+    WHERE RevokedAt IS NOT NULL;
+```
+
+## 2.3 Tạo bảng UserOTP
+Tạo bảng này chứa thông tin mã OTP  
+```SQL
+CREATE TABLE dbo.UserOTP (
+    UserId int NOT NULL,
+    Email nvarchar(200) NOT NULL,
+    OTP nvarchar(80) NOT NULL,
+    Expired_OTP datetime2(7) NOT NULL,
+    Purpose nvarchar(50) NOT NULL,
+    CreatedAt datetime2(7) NOT NULL CONSTRAINT DF_UserOTP_CreatedAt DEFAULT SYSUTCDATETIME(),
+);
+```
+## 2.4 Tạo bảng UserExternalLogin
+Tạo bảng này lưu trữ thông tin người dùng đăng nhập bằng nahf cung cấp thứ ba như `Google` hoặc `Facebook`  
+```SQL
+CREATE TABLE dbo.UserExternalLogin (
+    UserEmail nvarchar(32) NOT NULL,
+    Provider nvarchar(50) NOT NULL,
+    ProviderUserId nvarchar(255) NOT NULL,
+    ProviderEmail nvarchar(320) NULL,
+    CreatedAt datetime2(7) NOT NULL,
+    UpdatedAt datetime2(7) NOT NULL
+);
+```
+Tạo index  
+```SQL
+CREATE UNIQUE INDEX UX_ExternalLogin_Provider_ProviderUserId
+ON dbo.UserExternalLogin(Provider, ProviderUserId);
+```
+## 2.5 Tạo các procedure
+
+### 1. Procedure tạo tài khoản mới khi đăng nhập bằng Google hoặc Facebook
+
+Khi người dùng sử dụng chức năng đăng nhập bằng mạng xã hội như `Facebook` hoặc `Google` sẽ có các trường hợp sau:  
+Ví dụ với `google`  
+
+1. Người dùng đã có tài khoản nhưng chưa liên kết với google
+Ban đầu người dùng tạo tài khoản trên phần mềm, họ đã có `tài khoản nội bộ` dùng để đăng nhập. Lần sau họ đăng nhập thì họ sử dụng tài khoản google thì ta cần thông báo cho họ đăng nhập bằng tài khoản nội bộ và tiến hành liên kết tài khoản google với tài khoản này, không tự động liên kết mail này với tài khoản nội bộ.  
+
+2. Người dùng đã có tài khoản và đã liên kết với tài khoản google
+Với người dùng đã có tài khoản nội bộ và đã liên kết với tài khoản google thì khi họ sử dụng bất kỳ cách đăng nhập nào thì cũng tiến hành đăng nhập cho họ.  
+
+3. Người dùng hoàn toàn mới  
+Đây là lần đầu họ đăng nhập phần mềm, vì vậy khi họ đăng nhập bằng tài khoản Google thì ta cần tạo cho họ một tài khoản nội bộ dùng để đăng nhập bình thường, nhưng mật khẩu để `NULL`, và liên kết tài khoản nội bộ đó với tài khoản google này. Sau đó thông báo người dùng cần đợi Admin kích hoạt tài khoản này để sử dụng.  
+
+SQL dưới đây giải quyết các vấn đề trên.  
+```SQL
+USE [DucQuanApp];
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_ResolveOrRegisterExternalUser
+    @Provider       NVARCHAR(50),
+    @ProviderUserId NVARCHAR(255),
+    @ProviderEmail  NVARCHAR(320),
+    @DisplayName    NVARCHAR(200)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    IF @@TRANCOUNT = 0
+        THROW 51001, N'Procedure requires an active transaction.', 1;
+
+    -- Chuẩn hóa tên provider; không đổi ProviderUserId.
+    SET @Provider = LOWER(LTRIM(RTRIM(@Provider)));
+    SET @ProviderEmail = LTRIM(RTRIM(@ProviderEmail));
+    SET @DisplayName = LTRIM(RTRIM(@DisplayName));
+
+    IF @Provider IS NULL
+       OR @Provider NOT IN (N'google', N'facebook')
+        THROW 51002, N'Nhà cung cấp không được hỗ trợ.', 1;
+
+    IF @ProviderUserId IS NULL
+       OR LEN(LTRIM(RTRIM(@ProviderUserId))) = 0
+        THROW 51003, N'Không xác định được định danh từ nhà cung cấp.', 1;
+
+    IF @ProviderEmail IS NULL
+       OR LEN(@ProviderEmail) = 0
+        THROW 51004, N'Nhà cung cấp không trả về email', 1;
+
+    IF @DisplayName IS NULL OR LEN(@DisplayName) = 0
+        SET @DisplayName = N'Người dùng mới';
+
+    /*
+        Hai người hoặc hai cửa sổ có thể gửi cùng một yêu cầu gần như đồng thời. Khóa này giúp các lần gọi procedure trên xử lý tuần tự trong phạm vi database.
+    */
+    DECLARE @LockResult INT;
+
+    EXEC @LockResult = sys.sp_getapplock
+        @Resource = N'Quan.ExternalIdentity.ResolveOrRegister.v1',
+        @LockMode = N'Exclusive',
+        @LockOwner = N'Transaction',
+        @LockTimeout = 5000;
+
+    IF @LockResult < 0
+        THROW 51005, N'Hệ thống đang xử lý xác thực đăng nhập phiên trước đó chưa hoàn thành.', 1;
+
+    DECLARE
+        @ResultCode      NVARCHAR(40),
+        @InternalEmail   NVARCHAR(320),
+        @InternalName    NVARCHAR(200),
+        @Privilege       NVARCHAR(100),
+        @IsActive        BIT,
+        @StoredId        NVARCHAR(255),
+        @MappingCount    BIGINT,
+        @UserCount       BIGINT;
+
+    /*
+        BƯỚC 1: tìm bằng Provider + ProviderUserId.
+        Không dùng email provider để thay thế mapping.
+    */
+    SELECT @MappingCount = COUNT_BIG(*)
+    FROM dbo.UserExternalLogin WITH (UPDLOCK, HOLDLOCK)
+    WHERE Provider = @Provider
+      AND ProviderUserId = @ProviderUserId;
+
+    IF @MappingCount > 1
+        THROW 51006, N'ID này được liên kết nhiều hơn một tài khoản, không hợp lệ', 1;
+
+    IF @MappingCount = 1
+    BEGIN
+        SELECT
+            @InternalEmail = UserEmail,
+            @StoredId = ProviderUserId
+        FROM dbo.UserExternalLogin
+        WHERE Provider = @Provider
+          AND ProviderUserId = @ProviderUserId;
+
+        /*
+            Provider ID phải khớp chính xác. Không coi hai ID khác hoa/thường là cùng danh tính.
+        */
+        IF @StoredId IS NULL
+           OR @StoredId COLLATE Latin1_General_100_BIN2
+              <> @ProviderUserId COLLATE Latin1_General_100_BIN2
+           OR DATALENGTH(@StoredId) <> DATALENGTH(@ProviderUserId)
+            THROW 51007, N'Không tìm thấy ID hợp lệ cho người dùng này', 1;
+
+        SELECT @UserCount = COUNT_BIG(*)
+        FROM dbo.Users WITH (UPDLOCK, HOLDLOCK)
+        WHERE Email = @InternalEmail;
+
+        IF @UserCount <> 1
+            THROW 51008, N'Tài khoản này được liên kết bất thường với tài khoản nội bộ. Không thể đăng nhập', 1;
+
+        SELECT
+            @InternalName = UserName,
+            @Privilege = Privilege,
+            @IsActive = IsActive
+        FROM dbo.Users
+        WHERE Email = @InternalEmail;
+
+        SET @ResultCode =
+            CASE
+                WHEN @IsActive = 1 THEN N'LOGIN_ALLOWED'
+                ELSE N'ACCOUNT_INACTIVE'
+            END;
+    END
+    ELSE
+    BEGIN
+        /*
+            BƯỚC 2: chưa có mapping -> kiểm tra email nội bộ.
+
+            Chỉ kiểm tra để quyết định LINK_REQUIRED hay tạo mới.
+            Email trùng không đủ điều kiện đăng nhập.
+        */
+        SELECT @UserCount = COUNT_BIG(*)
+        FROM dbo.Users WITH (UPDLOCK, HOLDLOCK)
+        WHERE Email = @ProviderEmail;
+
+        IF @UserCount > 1
+            THROW 51009, N'Email này trùng với email đã có trong tài khoản nội bộ', 1;
+
+        IF @UserCount = 1
+        BEGIN
+            SET @ResultCode = N'LINK_REQUIRED';
+        END
+        ELSE
+        BEGIN
+            /*
+                BƯỚC 3: tài khoản mới hoàn toàn.
+                Mặc định quyền hạn là User và tình trạng kích hoạt là 0
+            */
+            INSERT INTO dbo.Users
+            (
+                UserName,
+                Email,
+                PasswordHash,
+                PasswordSalt,
+                IsActive,
+                Privilege
+            )
+            VALUES
+            (
+                @DisplayName,
+                @ProviderEmail,
+                NULL,
+                NULL,
+                0,
+                N'User'
+            );
+
+            DECLARE @Now DATETIME2(7) = SYSUTCDATETIME();
+
+            INSERT INTO dbo.UserExternalLogin
+            (
+                UserEmail,
+                Provider,
+                ProviderUserId,
+                ProviderEmail,
+                CreatedAt,
+                UpdatedAt
+            )
+            VALUES
+            (
+                @ProviderEmail,
+                @Provider,
+                @ProviderUserId,
+                @ProviderEmail,
+                @Now,
+                @Now
+            );
+
+            SET @InternalEmail = @ProviderEmail;
+            SET @InternalName = @DisplayName;
+            SET @Privilege = N'User';
+            SET @IsActive = 0;
+            SET @StoredId = @ProviderUserId;
+            SET @ResultCode = N'CREATED_PENDING';
+        END;
+    END;
+
+    SELECT
+        @ResultCode AS ResultCode,
+        @InternalEmail AS UserEmail,
+        @InternalName AS UserName,
+        @Privilege AS Privilege,
+        @IsActive AS IsActive,
+        @Provider AS Provider,
+        @StoredId AS ProviderUserId;
+END;
+GO
+```
+
+## 2.6 Tạo tài khoản đăng nhập vào CSDL
 
 Để có thể có quyền truy cập vào CSDL bằng tài khoản thì ta cần tạo tài khoản login, tạo người dùng và cấp quyền trong SQL Server:
 
@@ -192,8 +492,8 @@ ALTER ROLE db_datawriter ADD MEMBER ducquan_user -- cấp quyền ghi dữ liệ
 -- Cấp quyền quản trị CSDL (Cấp quyền truy cập đầy đủ)
 ALTER ROLE db_owner ADD MEMBER ducquan_user
 ```
-Bước 4: Kiểm tra lại quyền truy cập bằng câu lệnh sau:  
 
+Bước 4: Kiểm tra lại quyền truy cập bằng câu lệnh sau:  
 ```SQL
 SELECT 
     dp.name AS UserName, 
@@ -212,14 +512,13 @@ WHERE
 ![image](assets/github/images/create_role_databse.png)
 
 Vậy là đã hoàn thành cấp quyền truy cập CSDL để thao tác với phần mềm.  
-
 Một số lệnh cấp quyền cho người dùng trong SQL Server (Dùng tham khảo cho các trường hợp phân quyền rõ ràng, giới hạn chức năng cho 1 số người):  
 
 Các lệnh `DENY`, `GRANT`, `REVOKE`, và `ALTER ROLE` đều được sử dụng để quản lý quyền truy cập của người dùng trong SQL Server, nhưng chúng có chức năng và cách thức hoạt động khác nhau.  
 
 `DENY`, `GRANT`, `REVOKE` chỉ áp dụng cho người dùng hoặc vai trò (role) trên một đối tượng trong cơ sở dữ liệu (ví dụ: bảng, view, thủ tục, v.v.).   
 
-## GRANT - Cấp quyền cho người dùng hoặc nhóm người dùng
+### 2.6.1 GRANT - Cấp quyền cho người dùng hoặc nhóm người dùng
 
 - Mục đích: Cấp quyền cho người dùng hoặc vai trò (role) trên một đối tượng trong cơ sở dữ liệu (ví dụ: bảng, view, thủ tục, v.v.).  
 
@@ -233,7 +532,7 @@ GRANT SELECT ON dbo.Users TO ducquan_user;  -- Chỉ cấp quyền SELECT cho ng
 GRANT SELECT, INSERT, UPDATE ON dbo.Users TO ducquan_user;  -- Cấp quyền SELECT, INSERT và UPDATE, không cấp quyền DELETE
 ```
 
-## DENY - Từ chối quyền của người dùng cho các thao tác vs DB 
+### 2.6.2 DENY - Từ chối quyền của người dùng cho các thao tác vs DB 
 
 - Mục đích: Từ chối quyền cho người dùng hoặc vai trò đối với một đối tượng trong cơ sở dữ liệu.  
 
@@ -246,7 +545,7 @@ GRANT SELECT, INSERT, UPDATE ON dbo.Users TO ducquan_user;  -- Cấp quyền SEL
 DENY SELECT ON dbo.Users TO ducquan_user;  -- Từ chối quyền SELECT của người dùng đối với bảng trong DB
 ```
 
-## REVOKE - Thu hồi quyền của người dùng
+### 2.6.3 REVOKE - Thu hồi quyền của người dùng
 
 - Mục đích: Thu hồi quyền mà bạn đã cấp trước đó. `REVOKE` sẽ loại bỏ quyền truy cập của người dùng hoặc vai trò đối với một đối tượng mà quyền đó đã được cấp.  
 
@@ -259,7 +558,7 @@ DENY SELECT ON dbo.Users TO ducquan_user;  -- Từ chối quyền SELECT của n
 REVOKE SELECT ON dbo.Users TO ducquan_user; -- Thu hồi quyền SELECT đổi với người dùng
 ```
 
-## ALTER ROLE
+### 2.6.4 ALTER ROLE
 
 - Mục đích: Thay đổi vai trò của người dùng `trong cơ sở dữ liệu`. Lệnh này cho phép bạn thêm hoặc xóa người dùng từ một vai trò cụ thể `trong cơ sở dữ liệu`.  
 
@@ -273,7 +572,7 @@ REVOKE SELECT ON dbo.Users TO ducquan_user; -- Thu hồi quyền SELECT đổi v
 ALTER ROLE db_datareader ADD MEMBER ducquan_user;
 ```
 
-## Cách truy vấn các quyền đã cấp cho tài khoản người dùng
+### 2.6.5 Cách truy vấn các quyền đã cấp cho tài khoản người dùng
 
 Kiểm tra các `vai trò` (vai trò được thêm bởi lệnh `ALTER ROLE`) mà người dùng đã tham gia, ví dụ đối với người dùng `ducquan_user`:  
 ```SQL
@@ -357,7 +656,7 @@ Ta tạo 1 tên mới cho navigation và các icon tương ứng với nó trong
 
 ## 3.2 Thêm nút bấm vào navigation
 
-Sau khi đặt tên và có hình ảnh tương ứng, ta thêm nó vào hàm `__init__` của `App` [tại đây](src/main.py).  
+Sau khi đặt tên và có hình ảnh tương ứng, ta thêm dữ liệu vào biến `self.nav_items` trong hàm `__init__` của `App` [tại đây](src/main.py).  
 
 ![image](assets/github/images/add_new_navigation.png)  
 
@@ -384,7 +683,7 @@ Trong đó:
 Để tạo giao diện cho navigation, khi người dùng nhấn vào nút thì ta sẽ tạo tệp tương ứng ở thư mục [gui](src/gui/).  
 Tại đây ta tạo tệp tương ứng với `database navigation` sẽ có tên là [database_window](src/gui/database_window.py). Class trong tệp này kế thừa thuộc tính là `CtkFrame` từ `Customtkinter`.  
 
-Tùy theo giao diện mà ta sẽ tạo nó tương ứng với nhu cầu, tuy nhiên cần đúng định dạng là 1 Frame. Có thê tham khảo tại thư mục `gui`.  
+Tùy theo giao diện mà ta sẽ tạo nó tương ứng với nhu cầu, tuy nhiên cần đúng định dạng là 1 Frame. Có thể tham khảo tại thư mục `gui` các giao diện trước đó.  
 
 > [!QUESTION]  
 > ❓ Các câu hỏi thường gặp  
