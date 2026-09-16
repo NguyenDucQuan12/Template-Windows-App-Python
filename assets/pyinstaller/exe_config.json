@@ -1,0 +1,97 @@
+{
+ "version": "auto-py-to-exe-configuration_v1",
+ "pyinstallerOptions": [
+  {
+   "optionDest": "noconfirm",
+   "value": true
+  },
+  {
+   "optionDest": "filenames",
+   "value": "D:/Project/Window_App_Template/src/main.py"
+  },
+  {
+   "optionDest": "onefile",
+   "value": true
+  },
+  {
+   "optionDest": "console",
+   "value": false
+  },
+  {
+   "optionDest": "icon_file",
+   "value": "D:/Project/Window_App_Template/assets/images/ico/ico.ico"
+  },
+  {
+   "optionDest": "name",
+   "value": "LamSon"
+  },
+  {
+   "optionDest": "clean_build",
+   "value": false
+  },
+  {
+   "optionDest": "strip",
+   "value": false
+  },
+  {
+   "optionDest": "noupx",
+   "value": false
+  },
+  {
+   "optionDest": "disable_windowed_traceback",
+   "value": false
+  },
+  {
+   "optionDest": "uac_admin",
+   "value": false
+  },
+  {
+   "optionDest": "uac_uiaccess",
+   "value": false
+  },
+  {
+   "optionDest": "argv_emulation",
+   "value": false
+  },
+  {
+   "optionDest": "bootloader_ignore_signals",
+   "value": false
+  },
+  {
+   "optionDest": "datas",
+   "value": "D:/Project/Window_App_Template/assets/images;assets/images/"
+  },
+  {
+   "optionDest": "datas",
+   "value": "D:/Project/Window_App_Template/data;data/"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "tkinter"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "tkinter.ttk"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "tkinter.messagebox"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "pandas"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "pyodbc"
+  },
+  {
+   "optionDest": "datas",
+   "value": "D:/Project/Window_App_Template/.venv_source/Lib/site-packages/customtkinter;customtkinter/"
+  }
+ ],
+ "nonPyinstallerOptions": {
+  "increaseRecursionLimit": true,
+  "manualArguments": ""
+ }
+}
