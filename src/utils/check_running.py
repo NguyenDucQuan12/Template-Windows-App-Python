@@ -1,82 +1,86 @@
-import os
-import psutil
+"""
+Tệp tin kiểm tra chương trình có được mở hai lần không
+"""
+import ctypes
+import multiprocessing
+import sys
+from contextlib import contextmanager
+from ctypes import wintypes
 
-def check_if_running_by_name(exe_name: str) -> bool:
+
+class AlreadyRunningError(RuntimeError):
+    """Một phiên bản khác của ứng dụng đang chạy."""
+
+
+@contextmanager
+def single_instance(name: str):
     """
-    Kiểm tra app đã chạy chưa dựa trên *tên process* (vd: MyApp.exe).
+    Chỉ cho phép một phiên bản chạy trong phạm vi tên mutex.
+
+    Phải giữ context này suốt thời gian ứng dụng hoạt động.
+    Chỉ hỗ trợ Windows.
     """
-    current_pid = os.getpid()               # PID của process hiện tại (chính instance đang chạy)
-    target_name = exe_name.casefold()       # casefold() chắc hơn lower() cho việc so sánh không phân biệt hoa/thường
+    if sys.platform != "win32":
+        raise RuntimeError("single_instance chỉ hỗ trợ Windows.")
 
-    # Duyệt tất cả process đang chạy và chỉ lấy các trường cần thiết để nhanh hơn
-    for proc in psutil.process_iter(attrs=["pid", "name"]):
-        try:
-            pid = proc.info.get("pid")
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
-            # Bỏ qua chính process hiện tại để không "tự phát hiện mình"
-            if pid == current_pid:
-                continue
+    create_mutex = kernel32.CreateMutexW
+    create_mutex.argtypes = (
+        ctypes.c_void_p,   # Thuộc tính bảo mật mặc định
+        wintypes.BOOL,     # Có lấy quyền sở hữu mutex hay không
+        wintypes.LPCWSTR,  # Tên mutex
+    )
+    create_mutex.restype = wintypes.HANDLE
 
-            name = proc.info.get("name")
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
 
-            # Nếu không đọc được name (None/""), bỏ qua để tránh lỗi .casefold()
-            if not name:
-                continue
+    ERROR_ALREADY_EXISTS = 183
 
-            # So sánh chính xác bằng nhau (tránh dùng "in" để không match nhầm)
-            if name.casefold() == target_name:
-                return True
+    ctypes.set_last_error(0)
+    handle = create_mutex(None, False, name)
+    error = ctypes.get_last_error()
 
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            # Process có thể biến mất ngay lúc đang duyệt hoặc không đủ quyền để đọc thông tin
-            continue
+    if not handle:
+        # Không tạo/mở được mutex: báo lỗi, không tự cho app chạy tiếp.
+        raise ctypes.WinError(error)
 
-    return False
-
-
-def check_if_running_by_exe_path() -> bool:
-    """
-    Kiểm tra app đã chạy chưa dựa trên *đường dẫn exe* của chính app hiện tại.
-
-    Ý tưởng:
-      - Lấy đường dẫn exe của instance hiện tại (process đang chạy)
-      - Duyệt các process khác, nếu process nào có exe path trùng thì => đã có instance khác
-
-    Ưu điểm:
-      - Ít false-positive hơn so với kiểm tra theo tên
-    Nhược điểm:
-      - Có thể gặp AccessDenied khi đọc exe của process khác
-      - Vẫn không chống race condition 100%
-    """
-    me = psutil.Process()                       # Process object của chính instance hiện tại
-    my_pid = me.pid                             # PID hiện tại
-    my_exe = me.exe()                           # Đường dẫn exe của instance hiện tại
-    my_exe_norm = os.path.normcase(my_exe)      # Chuẩn hóa hoa/thường trên Windows để so sánh path
-
-    # Có thể giới hạn theo user để tránh "đụng" app cùng tên của user khác (nếu máy có nhiều user/session)
     try:
-        my_user = me.username()
-    except psutil.Error:
-        my_user = None
+        if error == ERROR_ALREADY_EXISTS:
+            raise AlreadyRunningError("Ứng dụng đã được mở ở một phiên bản khác.")
+        yield
+    finally:
+        close_handle(handle)
 
-    for proc in psutil.process_iter(attrs=["pid", "exe", "username", "name"]):
-        try:
-            # Bỏ qua chính mình
-            if proc.info.get("pid") == my_pid:
-                continue
 
-            # (Tuỳ chọn) Chỉ xét process cùng user để tránh nhầm với user khác
-            if my_user and proc.info.get("username") and proc.info["username"] != my_user:
-                continue
+def run_app():
+    """
+    Đặt phần khởi tạo và vòng lặp chính của ứng dụng tại đây.
+    Ví dụ: root.mainloop() hoặc app.exec().
+    """
+    print("Ứng dụng đang chạy.")
+    input("Nhấn Enter để thoát...")
 
-            exe = proc.info.get("exe")
 
-            # Nếu không đọc được exe (None) thì có thể fallback sang name, nhưng cẩn thận false-positive
-            if exe:
-                if os.path.normcase(exe) == my_exe_norm:
-                    return True
+def main() -> int:
+    """
+    Ví dụ chạy thử
+    """
+    # Giữ tên này cố định giữa các lần mở ứng dụng.
+    mutex_name = r"Local\Quan.SingleInstance"
 
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            continue
+    try:
+        with single_instance(mutex_name):
+            run_app()
 
-    return False
+    except AlreadyRunningError as exc:
+        print(exc)
+        return 0
+
+    return 0
+
+if __name__ == "__main__":
+    multiprocessing.freeze_support()
+    raise SystemExit(main())
