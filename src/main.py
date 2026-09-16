@@ -21,7 +21,6 @@ import json
 import queue
 import subprocess
 import sys
-import tempfile
 import multiprocessing
 from pathlib import Path
 from tkinter import TclError
@@ -35,6 +34,8 @@ import requests # pip install requests
 
 # Import các frame cho navigation
 from gui.login_gui import LoginWindow
+from utils.secure_session_store import SessionStore, StoreError
+from services.auth_adapter import DatabaseAuthAdapter, AuthSession
 from gui.home_window import HomePage
 from gui.database_window import DatabasePage
 
@@ -43,7 +44,6 @@ from utils.constants import (APP_NAME_SYSTEM, APP_TITLE, FILE_PATH, IMAGE, APP_U
 from utils.check_running import single_instance, AlreadyRunningError
 from utils.resource import resource_path
 from logger.logger import change_log_file_path, delete_old_logs, log_file_path
-
 
 # pylint: disable=pointless-string-statement
 """
@@ -67,7 +67,6 @@ logging.basicConfig(filename=log_file_path, filemode= 'a',
 logger.setLevel(logging.INFO)
 # Gọi hàm kiểm tra thư mục log tồn tại bao lâu trước khi tạo thư mục mới
 delete_old_logs()
-
 # Đường dẫn tới tệp chứa thông tin cập nhật phần mềm
 UPDATE_FILE = FILE_PATH["UPDATE_CONFIG"]
 # Đọc thông tin cập nhật phần mềm từ tệp JSON nếu tồn tại
@@ -162,6 +161,14 @@ class App(ctk.CTk):
         self.frames: Dict[str, CTkFrameType] = {}   # <== chỉ tạo khi show lần đầu
         self.active_nav: Optional[str] = None       # đang chọn tab nào
         self.permission = None                # quyền hạn hiện tại của người dùng (Admin / User / Guest)
+        self.current_auth = None
+        self.current_session_token = None
+        self._allow_auto_login = True
+        self.auth_adapter = DatabaseAuthAdapter()
+        try:
+            self.session_store = SessionStore()
+        except StoreError:
+            self.session_store = None
         self._closing = False
         self._logout_in_progress = False
         self._login_generation = 0
@@ -175,7 +182,7 @@ class App(ctk.CTk):
         self._tray_thread = None
         self._update_thread = None
         self._log_thread = None
-        self.tray_icon = None                 # Tray icon của phần mềm (nếu có)
+        self.tray_icon = None
 
         # Tạo navigation ứng dụng phía bên trái của phần mềm
         self.create_navigation()
@@ -193,7 +200,7 @@ class App(ctk.CTk):
         self.check_log_expire = True
         self.check_new_log()
 
-        # Chạy hàm cập nhật giao diện mỗi 50ms nếu có từ queue
+        # Kiểm tra danh sách nhiệm vụ nếu có trong Queue
         self._poll_ui_queue()
         # Mở cửa sổ đăng nhập
         self.open_window_login()
@@ -238,7 +245,6 @@ class App(ctk.CTk):
                 hover_color=("gray70", "gray30"),
                 command=lambda n=item.name: self.show_nav(n)     # n là tên nav (HOME_NAV / CHAT_NAV / DATABASE_NAV) lấy từ item.name
             )
-
             # Chưa biết quyền vẫn render; sau login sẽ ẩn/hiện (enable/disable)
             btn.grid(row=row_idx, column=0, sticky="ew")
             self.nav_buttons[item.name] = btn
@@ -282,7 +288,7 @@ class App(ctk.CTk):
         """
         ctk.set_appearance_mode(new_appearance_mode)
 
-    def logout(self, forget_device: bool = False):
+    def logout(self, forget_device: bool = True):
         """
         Đổi tài khoản trong cùng App; tray thuộc ứng dụng, không thuộc user.
         - forget_device: nếu True thì xóa session_token trong config để lần sau không auto login nữa
@@ -292,19 +298,25 @@ class App(ctk.CTk):
 
         self._logout_in_progress = True
         try:
-            if not messagebox.askyesno("Đăng xuất", "Bạn có chắc chắn muốn đăng xuất không?", parent=self):
+            if not messagebox.askyesno("Đăng xuất", "Đăng xuất và bỏ ghi nhớ tài khoản trên máy này?", parent=self):
                 return
+            # Xóa local trước; không để tài khoản cũ tự đăng nhập khi đổi user.
             if forget_device:
                 try:
-                    self._forget_local_session_and_revoke_db()
-                except Exception:    # pylint: disable=broad-except
-                    logger.exception("Không thể quên thiết bị")
-                    messagebox.showerror("Đăng xuất", "Không thể xóa phiên đã lưu. Vui lòng thử lại.", parent=self)
+                    if self.session_store is not None:
+                        self.session_store.clear()
+                        # Nhớ thêm bước xóa token ở trên DB
+                except StoreError:
+                    messagebox.showerror("Đăng xuất", "Không xóa được phiên đã lưu. Kiểm tra quyền thư mục trước khi tiếp tục.", parent=self)
                     return
 
+            # Đưa các giá trị về mặc định
+            token = self.current_auth.token if self.current_auth else None
             # Tăng generation để hủy các luồng đang chạy liên quan đến phiên cũ, xóa quyền hạn
             self._login_generation += 1
+            self._allow_auto_login = False
             self.permission = None
+            self.current_auth = None
             self.current_session_token = None
 
             # Ẩn cửa sổ chính, xóa các frame và ẩn các nút nav
@@ -315,6 +327,16 @@ class App(ctk.CTk):
 
             # Mở lại cửa sổ đăng nhập
             self.open_window_login()
+            if token:
+                def revoke():
+                    """
+                    Thu hồi token
+                    """
+                    success = self.auth_adapter.revoke(token)
+                    if not self._stop_event.is_set():
+                        self._ui_queue.put(("logout_revoke", success))
+
+                threading.Thread(target=revoke, daemon=True, name="LogoutRevoke").start()
         finally:
             self._logout_in_progress = False
 
@@ -334,101 +356,16 @@ class App(ctk.CTk):
                 cleanup = getattr(frame, "cleanup", None)
                 if callable(cleanup):
                     cleanup()
-            except Exception:    # pylint: disable=broad-except
+            except Exception: # pylint: disable=broad-except
                 logger.exception("Lỗi cleanup trang %s", type(frame).__name__)
             finally:
                 try:
                     frame.destroy()
-                except Exception:    # pylint: disable=broad-except
+                except Exception: # pylint: disable=broad-except
                     logger.exception("Lỗi hủy trang %s", type(frame).__name__)
 
         # Cuối cùng cập nhật màu nút nav: không có nút nào được chọn
         self._update_nav_button_colors("")
-
-    def _forget_local_session_and_revoke_db(self):
-        """
-        Quên thiết bị:
-        - Lấy account đăng nhập gần nhất trong config
-        - Nếu có session_token -> revoke session trên DB (nếu có API)
-        - Xóa session_token trong config để lần sau không auto login nữa
-        """
-        accounts = self.load_account_login()
-        if not accounts:
-            return
-        # Lọc account có session_token
-        with_session = [a for a in accounts if a.get("session_token")]
-        if not with_session:
-            return
-        # LoginWindow hiện chỉ trả permission: không thể suy ra user/token hiện tại.
-        # Chỉ bật quên thiết bị khi luồng đăng nhập cung cấp token đã xác thực.
-        session_token = getattr(self, "current_session_token", None)
-        if not session_token:
-            raise RuntimeError("Cần session_token của phiên hiện tại từ LoginWindow; không chọn tài khoản theo thời gian")
-        matching = [acc for acc in with_session if acc.get("session_token") == session_token]
-        if len(matching) != 1:
-            raise RuntimeError("Không xác định duy nhất phiên hiện tại trong cấu hình")
-        latest_acc = matching[0]
-        # 1) Revoke session trên DB (khuyến nghị: xóa TokenHash khỏi bảng UserSessions)
-        #    Nếu bạn chưa có hàm này, bạn nên bổ sung:
-        #    database.revoke_session(session_token)
-        try:
-            if hasattr(self, "database") and hasattr(self.database, "revoke_session"):
-                self.database.revoke_session(session_token)
-        except Exception as e: # pylint: disable=broad-exception-caught
-            logger.warning("Không thể revoke session trong DB: %s", str(e))
-        # Xóa token khỏi account local
-        latest_acc["session_token"] = None
-        # Ghi lại toàn bộ list về file config
-        self._save_login_accounts(accounts)
-
-    def _save_login_accounts(self, accounts: list[dict]):
-        """
-        Ghi nguyên tử, giữ các khóa cấu hình khác; không ghi đè JSON hỏng.
-        """
-        path = Path(FILE_PATH["LOGIN_CONFIG"])
-        path.parent.mkdir(parents=True, exist_ok=True)
-        data = {}
-        if path.exists():
-            with path.open(encoding="utf-8") as stream:
-                data = json.load(stream)
-            if not isinstance(data, dict):
-                raise ValueError("Cấu hình đăng nhập phải là JSON object")
-        data["Login"] = accounts
-        temp_path = None
-        try:
-            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8",
-                    dir=path.parent, prefix=path.name + ".", suffix=".tmp", delete=False) as stream:
-                temp_path = stream.name
-                json.dump(data, stream, ensure_ascii=False, indent=4)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temp_path, path)
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                os.unlink(temp_path)
-
-    def load_account_login(self):
-        """
-        Tải thông tin CSDL đã đăng nhập trước đây theo thứ tự thời gian đăng nhập gần nhất từ tệp JSON.
-        Trả về danh sách các dict tài khoản đã lưu.
-        """
-        if os.path.exists(FILE_PATH["LOGIN_CONFIG"]):
-            try:
-                with open(FILE_PATH["LOGIN_CONFIG"], 'r', encoding='utf-8') as f:
-                    # Đọc dữ liệu từ tệp json
-                    config_data = json.load(f)
-                    # Sắp xếp danh sách theo last_login_ts giảm dần
-                    if 'Login' in config_data:
-                        config_data['Login'].sort(
-                            key=lambda acc: acc.get('last_login_ts') or '',
-                            reverse=True
-                        )
-                # Trả về danh sách tài khoản đã sắp xếp theo thời gian đăng nhập gần nhất
-                return config_data.get('Login', [])
-            except Exception as e: # pylint: disable=broad-exception-caught
-                logger.error("Lỗi khi tải cấu hình kết nối: %s", str(e))
-                return []
-        return []
 
     def get_information_from_server(self):
         """
@@ -629,13 +566,17 @@ class App(ctk.CTk):
         self.destroy()
 
     def destroy(self):
-        """Mọi đường thoát (kể cả callback cũ) đều dọn tài nguyên một lần."""
+        """
+        Mọi đường thoát (kể cả callback cũ) đều dọn tài nguyên một lần.
+        """
         if self._closing:
             return
         self._closing = True
         self._login_generation += 1
         self._login_pending = False
         self.permission = None
+        self.current_auth = None
+        self.current_session_token = None
         self.check_log_expire = False
         self._stop_event.set()
 
@@ -685,8 +626,14 @@ class App(ctk.CTk):
                 self,
                 lambda permission: self._ui_queue.put(("login", (generation, permission))),
                 lambda: self._ui_queue.put(("login_close", generation)),
-                software_name=APP_NAME_SYSTEM)
-        except Exception:    # pylint: disable=broad-except
+                software_name=APP_NAME_SYSTEM,
+                auto_login=self._allow_auto_login,
+                session_store=self.session_store,
+                auth_adapter=self.auth_adapter)
+            # LoginWindow có thể đã khởi tạo store khi main chưa khởi tạo được.
+            self.session_store = self._login_window.store
+            self._allow_auto_login = False
+        except Exception:
             self._login_pending = False
             raise
 
@@ -722,19 +669,25 @@ class App(ctk.CTk):
                     generation, info = payload
                     if generation == self._login_generation:
                         self.check_for_updates(info)
+                elif action == "logout_revoke":
+                    if not payload:
+                        parent = self._login_window if self._login_window is not None else self
+                        messagebox.showwarning("Đăng xuất",
+                            "Đã xóa phiên trên máy này nhưng chưa xác nhận thu hồi phiên trên server. "
+                            "Vui lòng kiểm tra kết nối hoặc liên hệ quản trị viên.", parent=parent)
                 elif action == "tray_failed":
                     self.restore_window()
-                    messagebox.showwarning("Khay hệ thống",
-                        "Không thể chạy biểu tượng khay. Cửa sổ được giữ mở.", parent=self)
-            except Exception:    # pylint: disable=broad-except
+                    messagebox.showwarning("Khay hệ thống", "Không thể chạy biểu tượng khay. Cửa sổ được giữ mở.", parent=self)
+            except Exception: # pylint: disable=broad-exception-caught
                 logger.exception("Lỗi xử lý sự kiện UI: %s", action)
 
             if self._closing:
                 return
+
         # Gọi lại hàm này sau 50ms
         self._poll_id = self.after(50, self._poll_ui_queue)
 
-    def login_success(self, permission):
+    def login_success(self, auth):
         """
         Sau khi đăng nhập:
         - Lưu quyền
@@ -744,14 +697,24 @@ class App(ctk.CTk):
         """
         if self._closing or not self._login_pending:
             return
+
+        # Đánh dấu đăng nhập thành công và hủy cửa sổ đăng nhập
         self._login_pending = False
         self._destroy_login_window()
-        self.permission = permission
+
+        # Không trả về thông tin phiên đăng nhập thì báo lỗi
+        if not isinstance(auth, AuthSession):
+            raise TypeError("LoginWindow phải trả AuthSession")
+
+        self.current_auth = auth
+        self.current_session_token = auth.token
+        self.permission = auth.permission
         self.deiconify()
         # Tạo tray_icon cho phần mềm nếu đã login thành công
         self.create_tray_icon()
         # Kiểm tra cập nhật phần mềm từ server
         self.get_information_from_server()
+
         # Ẩn/hiện nút theo quyền
         first_allowed: Optional[str] = None
         for name, btn in self.nav_buttons.items():
@@ -761,6 +724,7 @@ class App(ctk.CTk):
                     first_allowed = name
             else:
                 btn.grid_remove()  # ẩn nút không đủ quyền
+
         # Mặc định mở tab đầu tiên mà người dùng được vào
         if first_allowed:
             self.show_nav(first_allowed)
@@ -826,7 +790,7 @@ class App(ctk.CTk):
             ready_icon.stop()
         try:
             icon.run(setup=setup)
-        except Exception:    # pylint: disable=broad-except
+        except Exception: # pylint: disable=broad-except
             logger.exception("Tray icon gặp lỗi")
         finally:
             self._tray_ready.clear()
@@ -842,7 +806,7 @@ class App(ctk.CTk):
         try:
             with Image.open(resource_path(IMAGE["ICO_IMG"])) as source:
                 icon_image = source.copy()
-                
+
             icon = pystray.Icon(
                 "Quan", icon_image, APP_NAME_SYSTEM,
                 menu=pystray.Menu(
@@ -850,11 +814,13 @@ class App(ctk.CTk):
                     MenuItem("Ẩn", lambda icon, item: self._ui_queue.put(("hide", None))),
                     MenuItem("Đóng chương trình", lambda icon, item: self._ui_queue.put(("quit", None)))))
             self.tray_icon = icon
+
+            # Luồng tạo icon tray
             self._tray_thread = threading.Thread(target=self.icon_thread,
                 args=(icon,), daemon=True, name="SystemTray")
             self._tray_thread.start()
 
-        except Exception:    # pylint: disable=broad-except
+        except Exception: # pylint: disable=broad-except
             logger.exception("Không tạo được tray icon")
             self.tray_icon = None
             self._ui_queue.put(("tray_failed", None))
@@ -869,8 +835,9 @@ class App(ctk.CTk):
         if icon is not None and ready:
             try:
                 icon.stop()
-            except Exception:    # pylint: disable=broad-except
+            except Exception: # pylint: disable=broad-except
                 logger.exception("Không dừng được tray icon")
+
         # Nếu chưa ready, setup() sẽ nhận stop_event và tự dừng.
         thread = self._tray_thread
         if thread is not None and thread is not threading.current_thread():
@@ -886,7 +853,7 @@ def run_app():
     Nếu chưa chạy thì mở ứng dụng.
     """
     # Giữ tên này cố định giữa các lần mở ứng dụng. Nó giống như ID, nếu mở 1 ID 2 lần là bị chặn
-    mutex_name = r"Local\Quan_Application.SingleInstance"
+    mutex_name = r"Local\Quan.SingleInstance"
     try:
         with single_instance(mutex_name):
             app = App()
