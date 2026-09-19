@@ -1,117 +1,152 @@
+"""
+Dịch vụ OAuth Google trong một worker thread.
+"""
+import logging
 import threading
-import os
-import requests         # Gọi API userinfo của Google
-from google_auth_oauthlib.flow import InstalledAppFlow  # Flow OAuth2 cho app desktop
+from pathlib import Path
+
+import requests
+from google_auth_oauthlib.flow import InstalledAppFlow
+
+logger = logging.getLogger(__name__)
+class GoogleAuthError(RuntimeError):
+    """Thông báo đã làm sạch, có thể hiển thị trên giao diện."""
+
+
+class _DesktopGoogleFlow(InstalledAppFlow):
+    """
+    Giới hạn thời gian gọi endpoint đổi authorization code lấy token.
+
+    timeout_seconds của run_local_server chỉ giới hạn thời gian chờ
+    trình duyệt trả kết quả, không phải toàn bộ quá trình OAuth.
+    """
+
+    def fetch_token(self, **kwargs):
+        # timeout = (thời gian kết nối, thời gian chờ đọc dữ liệu).
+        kwargs.setdefault("timeout", (5, 15))
+        return super().fetch_token(**kwargs)
+
 
 class GoogleAuthService:
     """
-    Dịch vụ login Google cho desktop app.
+    Thực hiện OAuth Google trong một worker thread.
     """
 
     def __init__(self, client_secret_file: str, scopes: list[str]):
         """
-        client_secret_file: đường dẫn google_client_secret.json
-        scopes: danh sách scope OIDC
+        Thực hiện kết nối tới dịch vụ google
         """
-        self.client_secret_file = client_secret_file
-        self.scopes = scopes
+        self.client_secret_file = Path(client_secret_file)
+        self.scopes = list(scopes)
 
-    def start_login(
-        self,
-        on_success,
-        on_error,
-        timeout_seconds: int = 30,
-        host: str = "localhost",
-        port: int = 8765
-    ):
-        """
-        Bắt đầu login Google ở background thread.
+        # Một instance service chỉ thực hiện một lần OAuth tại một thời điểm.
+        self._login_lock = threading.Lock()
 
-        on_success: callback nhận user_info dict
-        on_error: callback nhận Exception
-        timeout_seconds: thời gian chờ tối đa để tránh treo popup
+    def start_login(self, on_success, on_error, timeout_seconds: int = 120, host: str = "127.0.0.1", port: int = 0) -> bool:
         """
-        # Chạy logic OAuth ở luồng nền để UI không bị đơ
-        t = threading.Thread(
+        Tiến hành đăng nhập bằng dịch vụ google  
+        Trả True: đã bắt đầu.  
+        Trả False: service đang có một lần OAuth khác.
+        """
+        if host not in {"127.0.0.1", "localhost"}:
+            raise ValueError("OAuth desktop chỉ được lắng nghe trên loopback.")
+
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds phải lớn hơn 0.")
+
+        # Kiểm tra lock trước khi tạo thread để tránh tạo nhiều thread cùng lúc.
+        try:
+            if not self._login_lock.acquire(blocking=False):
+                return False
+        except Exception: # pylint: disable=broad-except
+            return False
+
+        # Tạo thread để thực hiện OAuth Google trên trinh duyệt. Nếu thread ném exception, lock sẽ được giải phóng trong finally của _oauth_worker.
+        # Thời gian cho việc người dùng xác thực là 120s
+        worker = threading.Thread(
             target=self._oauth_worker,
             args=(on_success, on_error, timeout_seconds, host, port),
-            daemon=True
-        )
-        t.start()
+            daemon=True)
+
+        try:
+            worker.start()
+        except Exception as e: # pylint: disable=broad-except
+            logger.exception("Không thể bắt đầu thread OAuth Google: %s", str(e))
+            self._login_lock.release()
+            raise
+
+        return True
 
     def _oauth_worker(self, on_success, on_error, timeout_seconds, host, port):
         """
-        Luồng thực thi xác thực đăng nhập bằng Google
+        Chạy trong một thread riêng để thực hiện OAuth Google.
         """
+        flow = None
+        user_info = None
+        error = None
+
         try:
-            # Kiểm tra xem tồn tại tệp cấu hình đăng nhập không
-            if not os.path.exists(self.client_secret_file):
-                raise FileNotFoundError(
-                    f"Không tìm thấy tệp cấu hình đăng nhập bằng google: {self.client_secret_file}"
-                )
-            
-            # Tạo OAuth flow từ thư viện được cung cấp bởi GG
-            flow = InstalledAppFlow.from_client_secrets_file(
-                self.client_secret_file,
-                scopes=self.scopes
+            if not self.client_secret_file.is_file():
+                raise GoogleAuthError("Không tìm thấy cấu hình đăng nhập Google.")
+
+            # OAuth Google chỉ được thực hiện trong một thread tại một thời điểm.
+            # from_client_secrets_file() sẽ đọc file JSON và tạo một session HTTP để gọi endpoint Google. Nếu nhiều thread cùng gọi, session sẽ bị xung đột.
+            flow = _DesktopGoogleFlow.from_client_secrets_file(
+                str(self.client_secret_file),
+                scopes=self.scopes,
+                autogenerate_code_verifier=True,
             )
 
-            # Container để lấy creds từ thread con
-            result_container = {"creds": None, "error": None}
+            # File cấu hình phải được tạo cho ứng dụng Desktop.
+            if flow.client_type != "installed":
+                raise GoogleAuthError("Cấu hình Google phải thuộc loại Desktop app.")
 
-            # Hàm chạy local server OAuth
-            def _run_local():
-                try:
-                    creds = flow.run_local_server(
-                        host=host,
-                        port=port,
-                        open_browser=True
-                    )
-                    result_container["creds"] = creds
-                except Exception as e:
-                    result_container["error"] = e
-
-            # Chạy run_local_server trong thread con
-            inner = threading.Thread(target=_run_local, daemon=True)
-            inner.start()
-
-            # Chờ tối đa timeout_seconds
-            inner.join(timeout_seconds)
-
-            # Nếu user đóng tab/không login → timeout
-            if inner.is_alive():
-                try:
-                    # "Đánh thức" local server để thoát chờ
-                    requests.get(f"http://{host}:{port}/", timeout=1.5)
-                except Exception:
-                    pass
-
-                inner.join(3)
-                raise TimeoutError("Đăng nhập Google đã bị hủy hoặc quá thời gian.")
-
-            # Nếu thread con báo lỗi
-            if result_container["error"]:
-                raise result_container["error"]
-
-            # Lấy credentials
-            creds = result_container["creds"]
-            if not creds:
-                raise Exception("Không nhận được credentials từ Google.")
-
-            # Gọi userinfo endpoint
-            resp = requests.get(
-                "https://openidconnect.googleapis.com/v1/userinfo",
-                headers={"Authorization": f"Bearer {creds.token}"},
-                timeout=10
+            # Tạo một server HTTP tạm thời để nhận callback từ Google.
+            credentials = flow.run_local_server(
+                host=host,
+                port=port,
+                open_browser=True,
+                timeout_seconds=timeout_seconds,
+                prompt="select_account",
+                access_type="online",
+                authorization_prompt_message=None,
+                success_message=(
+                    "Da nhan phan hoi Google. "
+                    "Hay quay lai ung dung de hoan tat."
+                ),
             )
-            resp.raise_for_status()
 
-            # Parse JSON user_info
-            user_info = resp.json()
+            # Access token chỉ sử dụng trong bộ nhớ để lấy danh tính Google.
+            with requests.get("https://openidconnect.googleapis.com/v1/userinfo", headers={"Authorization": f"Bearer {credentials.token}"}, timeout=(5, 15)) as response:
+                response.raise_for_status()
+                user_info = response.json()
 
-            # Trả kết quả về UI qua callback
+            if not isinstance(user_info, dict):
+                raise GoogleAuthError("Google trả thông tin tài khoản không hợp lệ.")
+
+            google_sub = user_info.get("sub")
+
+            if not isinstance(google_sub, str) or not google_sub.strip():
+                raise GoogleAuthError("Không nhận được định danh tài khoản Google.")
+
+        except GoogleAuthError as exc:
+            error = exc
+
+        except Exception: # pylint: disable=broad-except
+            # Không đưa nguyên exception OAuth/HTTP lên UI:
+            # có thể chứa URL callback hoặc thông tin nhạy cảm.
+            error = GoogleAuthError("Không hoàn tất xác thực Google.Bạn có thể đã hủy, quá thời gian chờ hoặc kết nối mạng gặp lỗi. Vui lòng thử lại.")
+
+        finally:
+            # Tiến hành giải phóng lock trong finally để tránh deadlock nếu on_success/on_error ném exception.
+            try:
+                if flow is not None:
+                    flow.oauth2session.close()
+            finally:
+                self._login_lock.release()
+
+        # Đặt callback ngoài try của OAuth: lỗi trong callback không bị hiểu nhầm là lỗi xác thực.
+        if error is not None:
+            on_error(error)
+        else:
             on_success(user_info)
-
-        except Exception as e:
-            # Trả lỗi về UI qua callback
-            on_error(e)
