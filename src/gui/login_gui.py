@@ -508,7 +508,7 @@ class LoginWindow(ctk.CTkToplevel):
 
                 # Mất mạng giữ phiên để lần sau thử lại; invalid session thì xóa.
                 messagebox.showwarning("Đăng nhập", str(result), parent=self)
-                logger("Đăng nhập thất bại. Lỗi: %s", str(result))
+                logger.error("Đăng nhập thất bại. Lỗi: %s", str(result))
 
             # Xử lý thông báo
             elif kind == "message":
