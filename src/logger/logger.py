@@ -1,9 +1,12 @@
+"""
+Cấu hình logger cho ứng dụng, bao gồm việc tạo thư mục log theo ngày tháng năm, xóa các log cũ quá hạn, và thay đổi vị trí lưu log khi sang ngày mới.
+"""
 import sys
 import os
 import shutil
 import datetime
 import logging
-from utils.constants import *
+from utils.constants import APP_FOLDER_LOG
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +44,7 @@ def delete_old_logs():
     """
     # Không có thư mục log thì không cần làm gì
     if not os.path.exists(log_root_dir):
-        return  
+        return
 
     # Lấy ngày hiện tại
     now = datetime.datetime.now()
@@ -59,23 +62,23 @@ def delete_old_logs():
                 # Kiểm tra nếu thư mục đã tồn tại quá 30 ngày
                 if (now - folder_mod_time).days > LOG_EXPIRATION_DAYS:
                     # Xóa toàn bộ thư mục và nội dung bên trong
-                    logger.info(f"🗑️ Xóa thư mục log cũ: {folder_path}")
+                    logger.info("🗑️ Xóa thư mục log cũ: %s", folder_path)
                     # os.remove(folder_path)  # os gặp lỗi Access is denied, chuyển sang shutil
                     shutil.rmtree(folder_path)
 
-            except Exception as e:
-                logger.error(f"⚠️ Không thể xóa thư mục {folder_path}: {e}")
+            except Exception as e: #pylint: disable=broad-except
+                logger.error("⚠️ Không thể xóa thư mục %s: %s", folder_path, e, exc_info=True)
 
-def change_log_file_path(logger_root: logging, new_log_file_path = None):
+def change_log_file_path(logger_root: logging.Logger, new_log_file_path=None):
     """
     Thay đổi vị trí tệp log mà không thay đổi các thiết lập khác của logger.  
     Dùng cho trường hợp sang 1 ngày mới, tự động chuyển sang vị trí log mới
 
-    - Nếu logger_root được truyền vào là `logger = logging.getLogger(__name__)` thì nó chỉ ảnh hưỡng mỗi tệp đó
+    - Nếu logger_root được truyền vào là `logger = logging.getLogger(__name__)` thì nó chỉ ảnh hưởng mỗi tệp đó
     """
     # Nếu không chỉ định vị trí mới thì tự tạo thư mục theo ngày tháng năm
     if new_log_file_path is None:
-        # data test: 
+        # data test:
         # current_today = str((datetime.datetime.now() + datetime.timedelta(days=1)).strftime("%d-%m-%y")) # Tăng thêm 1 ngày
 
         # Tạo thời gian ghi log
@@ -86,18 +89,28 @@ def change_log_file_path(logger_root: logging, new_log_file_path = None):
         # Tạo 2 tệp chứa log và các câu lệnh print nếu tồn tại
         new_log_file_path = new_dir_log +"/log.log"
         new_log_print_app = new_dir_log + "/system_out.log"
-    
+    else:
+        # Nếu người dùng tự truyền file log vào, ta tự động trích xuất thư mục cha của file đó
+        new_log_file_path = os.path.abspath(new_log_file_path)
+        new_dir_log = os.path.dirname(new_log_file_path)
+        # File chứa print sẽ nằm chung thư mục với file log đó
+        new_log_print_app = os.path.join(new_dir_log, "system_out.log")
+
     # Kiểm tra xem thư mục chứa log đã được tạo chưa, nếu chưa có thì mới thực hiện tạo và thay đổi log, nếu có thì bỏ qua
     if not os.path.exists(new_dir_log):
 
-        # Khai báo là biến toàn cục để sử dụng biến log_file_path
-        global log_file_path
         # Ghi log
-        logger.info("Thay đổi vị trí lưu log mới từ: %s sang vị trí: %s", log_file_path, new_log_file_path)
+        current_log_file_path = next(
+            (handler.baseFilename for handler in logger_root.handlers
+             if isinstance(handler, logging.FileHandler)),
+            "<chưa xác định>",
+        )
+        logger.info("Thay đổi vị trí lưu log mới từ: %s sang vị trí: %s",
+                    current_log_file_path, new_log_file_path)
 
         # Kiểm tra và xóa các thư mục cũ đã tồn tại quá lâu
         delete_old_logs()
-        
+
         try:
             # Tao thư mục mới
             os.makedirs(new_dir_log)
@@ -109,29 +122,29 @@ def change_log_file_path(logger_root: logging, new_log_file_path = None):
 
             # Tạo một FileHandler mới với vị trí tệp log mới
             file_handler = logging.FileHandler(new_log_file_path, mode='a', encoding='utf-8')
-        
+
             # Định dạng cho log
             formatter = logging.Formatter('%(asctime)s %(levelname)s:\t %(filename)s - Line: %(lineno)d message: %(message)s',
                                            datefmt='%d/%m/%Y %I:%M:%S %p')
             file_handler.setFormatter(formatter)
-        
+
             # Thêm FileHandler mới vào logger
             logger_root.addHandler(file_handler)
-            
+
             # Thiết lập mức độ log (nếu cần thiết)
             logger_root.setLevel(logging.INFO)
-            
+
             # Nếu đầu ra của các phương thức khác với mặc định, tức là đang được ghi ở 1 tệp nào đó, thì đóng nó để không gây rò rỉ tài nguyên
             # Đóng file cũ nếu đang redirect
             try:
                 if sys.stdout not in (sys.__stdout__, sys.__stderr__):
                     sys.stdout.close()
-            except Exception as e:
+            except Exception as e: #pylint: disable=broad-except
                 logger.error("Không thể đóng print đầu ra mặc định: %s", e, exc_info=True)
             try:
                 if sys.stderr not in (sys.__stdout__, sys.__stderr__):
                     sys.stderr.close()
-            except Exception as e:
+            except Exception as e: #pylint: disable=broad-except
                 logger.error("Không thể error đóng đầu ra mặc định: %s", e, exc_info=True)
 
             # Trả lại về mặc định trước khi mở file mới
@@ -142,15 +155,12 @@ def change_log_file_path(logger_root: logging, new_log_file_path = None):
             sys.stdout = open(new_log_print_app, encoding="utf-8", mode="a")
             sys.stderr = open(new_log_print_app, encoding="utf-8", mode="a")
 
-            # Đặt lại tên thư mục log
-            # Khi thay đổi giá trị của biến toàn cục nằm trong hàm thì bắt buộc phải sử dụng khai báo global (Nếu không nó sẽ tự hiểu đây là biến cục bộ) 
-            log_file_path = new_log_file_path
             return True
-        
-        except Exception as e:
+
+        except Exception as e: #pylint: disable=broad-except
             logger.error("Không thể thay đổi vị trí lưu tệp log. Lỗi: %s", e)
             return False
-    
+
     else:
         # Nếu thư mục này đã tồn tại thì không làm gì cả
         return True
