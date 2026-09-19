@@ -120,7 +120,7 @@ def role(value):
 
 class DatabaseAuthAdapter:
     """
-    Lớp các thực đăng nhập
+    Lớp xác thực đăng nhập
     """
     def __init__(self, database_factory=None, verifier=None):
         """
