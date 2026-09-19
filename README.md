@@ -118,23 +118,51 @@ Sau khi tạo xong Database ta cần chuyển đến `DucQuanApp` thì mới có
 USE DucQuanApp
 ```
 
-## 2.1 Tạo bảng Users
+# 2.1 Tạo bảng UserProfiles
 
-Sau đó ta tiến hành tạo bảng chứa thông tin người dùng và đăng nhập có tên là `Users` và các trường thông tin cần thiết:  
+Ta tạo bảng chứa thông tin người dùng  
+
+> Bảng này hiện tại chưa cần dùng  
+> Trường UserId tạm thời hãy chuyển từ NOT NULL sang NULL  
+
+```SQL
+CREATE TABLE dbo.UserProfiles
+(
+    UserId VARCHAR(16) NOT NULL,
+    FullName NVARCHAR(200) NULL,
+    PhoneNumber NVARCHAR(30) NULL,
+    DateOfBirth DATE NULL,
+    Address NVARCHAR(500) NULL,
+    AvatarUrl NVARCHAR(2048) NULL,
+    CreatedAt DATETIME2(7) NOT NULL
+        CONSTRAINT DF_UserProfiles_CreatedAt DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME2(7) NOT NULL
+        CONSTRAINT DF_UserProfiles_UpdatedAt DEFAULT SYSUTCDATETIME()
+);
+```
+
+## 2.2 Tạo bảng Users
+
+Sau đó ta tiến hành tạo bảng chứa thông tin đăng nhập của người dùng có tên là `Users` và các trường thông tin cần thiết:  
 ```SQL
 -- Tạo bảng Users
 CREATE TABLE Users (
-	UserName NVARCHAR(200),
-	Email NVARCHAR(320) UNIQUE, --Ràng buộc Email là duy nhất trong bảng
-	PasswordHash NVARCHAR(500),
-	PasswordSalt NVARCHAR(500),
-	IsActivate BIT,
-	ActivatedAt datetime2(7),
-	Privilege NVARCHAR(50),
-	Status NVARCHAR(50),
-	CreatedAt datetime2(7),
-	UpdatedAt datetime2(7),
-	LastLoginAt datetime2(7)
+    UserId VARCHAR(16) NOT NULL,
+	UserName NVARCHAR(200) NOT NULL,
+	Email NVARCHAR(320) NOT NULL UNIQUE, --Ràng buộc Email là duy nhất trong bảng
+	PasswordHash NVARCHAR(500) NULL,
+	PasswordSalt NVARCHAR(500) NULL,
+	IsActivate BIT NOT NULL
+        CONSTRAINT DF_Users_IsActive DEFAULT (0),
+	ActivatedAt DATETIME2(7) NULL,
+	Privilege NVARCHAR(50) NOT NULL
+        CONSTRAINT DF_Users_Privilege DEFAULT (N'User'),
+	Status NVARCHAR(50) NULL,
+	CreatedAt DATETIME2(7) NOT NULL
+        CONSTRAINT DF_Users_CreatedAt DEFAULT SYSUTCDATETIME(),
+	UpdatedAt DATETIME2(7) NOT NULL
+        CONSTRAINT DF_Users_UpdatedAt DEFAULT SYSUTCDATETIME(),
+	LastLoginAt DATETIME2(7) NULL
 )
 ```
 ![image](assets/github/images/create_table_database.png)
@@ -157,6 +185,7 @@ Sau khi đã có bảng thì thêm 1 dòng dữ liệu ban đầu để đăng n
 -- Thêm dữ liệu mới vào bảng
 INSERT INTO Users
 (
+    UserId,
     UserName,
     Email,
     PasswordHash,
@@ -167,6 +196,7 @@ INSERT INTO Users
     Status
 )
 VALUES (
+    '3ksb6oagp405habu',
     N'Nguyễn Đức Quân',
     'nguyenducquan2001@gmail.com',
     '152a4a4f24e8481810b9b01c1ef148034f38c17fb40175e29201b767906558f455032735d0f144f052bd10bac553191dbd02c8d3d3c594023c8517ea72f47955',
@@ -181,12 +211,13 @@ VALUES (
 > Lưu ý giá trị 2 trường `Password` và `Salt_Password` phải tuân thủ cách mã hóa ở [tệp mã hóa](src/services/hash.py).  
 > Ví dụ mật khẩu phía trên là: `123456789`  
 
-## 2.2 Tạo bảng AuthSession
+## 2.3 Tạo bảng AuthSession
 
 Tiếp theo tạo bảng `AuthSession` để lưu trữ các phiên đăng nhập  
 ```SQL
 -- 1. Tạo bảng cấu trúc chuẩn hóa cho phiên đăng nhập
 CREATE TABLE dbo.AuthSession (
+    UserId VARCHAR(16) NOT NULL,
     SessionId bigint IDENTITY(1,1) NOT NULL,
     UserEmail nvarchar(256) NOT NULL,
     TokenHash binary(32) NOT NULL,
@@ -220,7 +251,7 @@ CREATE INDEX IX_AuthSession_Revoked
     WHERE RevokedAt IS NOT NULL;
 ```
 
-## 2.3 Tạo bảng UserOTP
+## 2.4 Tạo bảng UserOTP
 Tạo bảng này chứa thông tin mã OTP  
 ```SQL
 CREATE TABLE dbo.UserOTP (
@@ -232,10 +263,11 @@ CREATE TABLE dbo.UserOTP (
     CreatedAt datetime2(7) NOT NULL CONSTRAINT DF_UserOTP_CreatedAt DEFAULT SYSUTCDATETIME(),
 );
 ```
-## 2.4 Tạo bảng UserExternalLogin
-Tạo bảng này lưu trữ thông tin người dùng đăng nhập bằng nahf cung cấp thứ ba như `Google` hoặc `Facebook`  
+## 2.5 Tạo bảng UserExternalLogin
+Tạo bảng này lưu trữ thông tin người dùng đăng nhập bằng nhà cung cấp thứ ba như `Google` hoặc `Facebook`  
 ```SQL
 CREATE TABLE dbo.UserExternalLogin (
+    UserId VARCHAR(16) NOT NULL,
     UserEmail nvarchar(32) NOT NULL,
     Provider nvarchar(50) NOT NULL,
     ProviderUserId nvarchar(255) NOT NULL,
@@ -249,7 +281,7 @@ Tạo index
 CREATE UNIQUE INDEX UX_ExternalLogin_Provider_ProviderUserId
 ON dbo.UserExternalLogin(Provider, ProviderUserId);
 ```
-## 2.5 Tạo các procedure
+## 2.6 Tạo các procedure
 
 ### 1. Procedure tạo tài khoản mới khi đăng nhập bằng Google hoặc Facebook
 
@@ -459,6 +491,217 @@ BEGIN
         @IsActive AS IsActive,
         @Provider AS Provider,
         @StoredId AS ProviderUserId;
+END;
+GO
+```
+
+### 2. Procedure cập nhật thời gian đăng nhập
+Procedure này sẽ được chạy mỗi khi người dùng đăng nhập thành công, để cập nhật dữ liệu thời gian đăng nhập  
+```SQL
+USE [DucQuanApp]
+GO
+
+CREATE OR ALTER PROCEDURE [dbo].[usp_UpdateLastLoginAt]
+    @Email NVARCHAR(320)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE Users
+    SET LastLoginAt = SYSUTCDATETIME(),
+        UpdatedAt   = SYSUTCDATETIME()
+    WHERE Email = @Email;
+END;
+
+```
+
+### 3. Procedure liên kết tài khoản nội bộ với google/facebook
+Khi người dùng đăng nhập tài khoản nội bộ, họ muốn liên kết tài khoản này với tài khoản google/facebook thì sử dụng procedure này  
+Procedure này trả về `Resultcode` như sau:  
+| ResultCode              | Ý nghĩa                                      |
+| ----------------------- | -------------------------------------------- |
+| LINKED                  | Vừa liên kết thành công                      | 
+| ALREADY_LINKED          | Đã liên kết đúng tài khoản này               |
+| EXTERNAL_ACCOUNT_IN_USE | Google này thuộc tài khoản nội bộ khác       |
+| PROVIDER_ALREADY_LINKED | Tài khoản nội bộ đã liên kết Google khác     |
+| USER_NOT_FOUND          | Không tìm thấy tài khoản nội bộ              |
+| USER_INACTIVE           | Tài khoản nội bộ chưa kích hoạt hoặc bị khóa |
+```SQL
+USE [DucQuanApp];
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_LinkExternalLoginIfNotExists
+    @UserEmail      NVARCHAR(320),
+    @Provider       NVARCHAR(50),
+    @ProviderUserId NVARCHAR(255),
+    @ProviderEmail  NVARCHAR(320) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    /*
+        Chỉ gọi từ backend tin cậy:
+        - @UserEmail lấy từ danh tính nội bộ đã xác thực.
+        - @ProviderUserId lấy từ kết quả provider đã xác minh.
+
+        Procedure không tự xác minh token Google/Facebook.
+    */
+    IF @@TRANCOUNT = 0
+        THROW 51100, N'An active transaction is required.', 1;
+
+    SET @UserEmail = LTRIM(RTRIM(@UserEmail));
+    SET @Provider = LOWER(LTRIM(RTRIM(@Provider)));
+    SET @ProviderEmail = NULLIF(LTRIM(RTRIM(@ProviderEmail)), N'');
+
+    IF @UserEmail IS NULL OR LEN(@UserEmail) = 0
+        THROW 51101, N'Địa chỉ email không hợp lệ', 1;
+
+    IF @Provider IS NULL
+       OR @Provider NOT IN (N'google', N'facebook')
+        THROW 51102, N'Chỉ hỗ trợ liên kết với Google/Facebook', 1;
+
+    IF @ProviderUserId IS NULL
+       OR LEN(LTRIM(RTRIM(@ProviderUserId))) = 0
+        THROW 51103, N'Không thể xác định mã định danh từ nhà cung cấp.', 1;
+
+    /*
+        Dùng CÙNG tên lock với procedure resolve/register số 1.
+        Các luồng cùng tuân thủ lock này sẽ không đồng thời tạo hoặc liên kết cùng danh tính.
+    */
+    DECLARE @LockResult INT;
+
+    EXEC @LockResult = sys.sp_getapplock
+        @Resource = N'Quan.ExternalIdentity.ResolveOrRegister.v1',
+        @LockMode = N'Exclusive',
+        @LockOwner = N'Transaction',
+        @LockTimeout = 5000;
+
+    IF @LockResult < 0
+        THROW 51104, N'Luồng đang bận xử lý thao tác khác', 1;
+
+    DECLARE
+        @ResultCode     NVARCHAR(40),
+        @UserCount      BIGINT,
+        @MappingCount   BIGINT,
+        @ProviderCount  BIGINT,
+        @CanonicalEmail NVARCHAR(320),
+        @IsActive      BIT,
+        @OwnerEmail    NVARCHAR(320),
+        @StoredId      NVARCHAR(255);
+
+    -- 1. Kiểm tra tài khoản nội bộ.
+    SELECT @UserCount = COUNT_BIG(*)
+    FROM dbo.Users WITH (UPDLOCK, HOLDLOCK)
+    WHERE Email = @UserEmail;
+
+    IF @UserCount > 1
+        THROW 51105, N'Tài khoản nội bộ trùng lặp, không tiến hành liên kết.', 1;
+
+    IF @UserCount = 0
+    BEGIN
+        SET @ResultCode = N'USER_NOT_FOUND';
+    END
+    ELSE
+    BEGIN
+        SELECT
+            @CanonicalEmail = Email,
+            @IsActive = IsActive
+        FROM dbo.Users
+        WHERE Email = @UserEmail;
+
+        IF ISNULL(@IsActive, 0) <> 1
+        BEGIN
+            SET @ResultCode = N'USER_INACTIVE';
+        END
+        ELSE
+        BEGIN
+            -- 2. Kiểm tra danh tính Google/Facebook này đã thuộc ai chưa?
+            SELECT @MappingCount = COUNT_BIG(*)
+            FROM dbo.UserExternalLogin WITH (UPDLOCK, HOLDLOCK)
+            WHERE Provider = @Provider
+              AND ProviderUserId = @ProviderUserId;
+
+            IF @MappingCount > 1
+                THROW 51106, N'Có 2 tài khoản cùng sử dụng danh tính này. Không thể liên kết.', 1;
+
+            -- 3. User này đã liên kết provider đó chưa?
+            SELECT @ProviderCount = COUNT_BIG(*)
+            FROM dbo.UserExternalLogin WITH (UPDLOCK, HOLDLOCK)
+            WHERE UserEmail = @CanonicalEmail
+              AND Provider = @Provider;
+
+            IF @ProviderCount > 1
+                THROW 51107, N'Tài khoản này đã được liên kết với tài khoản nội bộ khác.', 1;
+
+            IF @MappingCount = 1
+            BEGIN
+                SELECT
+                    @OwnerEmail = UserEmail,
+                    @StoredId = ProviderUserId
+                FROM dbo.UserExternalLogin
+                WHERE Provider = @Provider
+                  AND ProviderUserId = @ProviderUserId;
+
+                /*
+                    Không để collation không phân biệt hoa/thường
+                    biến hai ID khác nhau thành cùng danh tính.
+                */
+                IF @StoredId IS NULL
+                   OR @StoredId COLLATE Latin1_General_100_BIN2
+                      <> @ProviderUserId COLLATE Latin1_General_100_BIN2
+                   OR DATALENGTH(@StoredId) <> DATALENGTH(@ProviderUserId)
+                    THROW 51108, N'Không tìm thấy tài khoản có định danh được cung cấp từ Google/Facebook', 1;
+
+                IF @OwnerEmail = @CanonicalEmail
+                    SET @ResultCode = N'ALREADY_LINKED';
+                ELSE
+                    SET @ResultCode = N'EXTERNAL_ACCOUNT_IN_USE';
+            END
+            ELSE IF @ProviderCount > 0
+            BEGIN
+                /*
+                    User đã có Google G1 nhưng đang muốn thêm Google G2.
+                    Không tự thay thế G1.
+                */
+                SET @ResultCode = N'PROVIDER_ALREADY_LINKED';
+            END
+            ELSE
+            BEGIN
+                -- 4. Tạo liên kết mới.
+                DECLARE @Now DATETIME2(7) = SYSUTCDATETIME();
+
+                INSERT INTO dbo.UserExternalLogin
+                (
+                    UserEmail,
+                    Provider,
+                    ProviderUserId,
+                    ProviderEmail,
+                    CreatedAt,
+                    UpdatedAt
+                )
+                VALUES
+                (
+                    @CanonicalEmail,
+                    @Provider,
+                    @ProviderUserId,
+                    @ProviderEmail,
+                    @Now,
+                    @Now
+                );
+
+                SET @ResultCode = N'LINKED';
+            END;
+        END;
+    END;
+
+    /*
+        Không trả email chủ sở hữu tài khoản khác khi xung đột.
+        Không dùng SELECT *.
+    */
+    SELECT
+        @ResultCode AS ResultCode,
+        @Provider AS Provider;
 END;
 GO
 ```
