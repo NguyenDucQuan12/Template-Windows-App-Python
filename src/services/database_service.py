@@ -680,46 +680,49 @@ class MyDatabase:
 
         return self._execute_query(query, params)
 
-    def get_user_by_google(self, google_id, email):
+    def link_google_account(self, user_email: str, google_id: str, google_email: str | None):
         """
-        Lấy thông tin người dùng khi đăng nhập bằng Google
-        """
-        return self._execute_query("EXEC dbo.usp_GetUserByGoogle @GoogleId=?, @Email=?", (google_id,email))
+        Liên kết Google với tài khoản nội bộ đã đăng nhập.
 
-    def get_user_by_facebook(self, facebook_id, email):
-        """
-        Lấy thông tin người dùng khi đăng nhập bằng Facebook
-        """
-        return self._execute_query("EXEC dbo.usp_GetUserByFacebook @FacebookId=?, @Email=?", (facebook_id,email))
+        user_email:
+            Email nội bộ lấy từ phiên đăng nhập hiện tại.
 
-    def create_user_if_not_exists_google(self, user_name, email):
-        """
-        Tạo thông tin đăng nhập của người dùng khi người dùng đăng nhập lần đầu bằng Google
-        """
-        return self._execute_query("EXEC dbo.usp_CreateUserIfNotExists_Google @UserName=?, @Email=?", (user_name,email))
+        google_id:
+            Trường 'sub' do Google trả về.
 
-    def create_user_if_not_exists_external(self, user_name, email):
+        google_email:
+            Email Google, chỉ là thông tin bổ sung.
         """
-        Tạo thông tin đăng nhập khi người dùng đăng nhập lần đầu bằng phương thức khác  
-        Cả hai phương thức đều trùng code Store Procedure
-        """
-        return self._execute_query("EXEC dbo.usp_CreateUserIfNotExists_External @UserName=?, @Email=?", (user_name,email))
+        if not isinstance(user_email, str) or not user_email.strip():
+            raise ValueError("Thiếu tài khoản nội bộ.")
 
-    def link_google_login_if_not_exists(self, user_email, google_id, provider_email):
-        """
-        Liên kết tài khoản Google với account đăng nhập của người dùng
-        """
-        return self._execute_query("""EXEC dbo.usp_LinkExternalLoginIfNotExists
-            @UserEmail=?, @Provider=?, @ProviderUserId=?, @ProviderEmail=?""",
-            (user_email,"google",google_id,provider_email))
+        user_email = user_email.strip()
 
-    def link_facebook_login_if_not_exists(self, user_email, facebook_id, provider_email):
+        if len(user_email) > 320:
+            raise ValueError("Email nội bộ quá dài.")
+
+        if (not isinstance(google_id, str) or not google_id.strip() or len(google_id) > 255):
+            raise ValueError("Định danh Google không hợp lệ.")
+
+        if google_email is not None:
+            if not isinstance(google_email, str):
+                raise ValueError("Email Google không hợp lệ.")
+
+            google_email = google_email.strip() or None
+
+            if google_email is not None and len(google_email) > 320:
+                raise ValueError("Email Google quá dài.")
+
+        query = """
+                    EXEC dbo.usp_LinkExternalLoginIfNotExists
+                @UserEmail = ?,
+                @Provider = ?,
+                @ProviderUserId = ?,
+                @ProviderEmail = ?
         """
-        Liên kết tài khoản Facebook với account đăng nhập của người dùng
-        """
-        return self._execute_query("""EXEC dbo.usp_LinkExternalLoginIfNotExists
-            @UserEmail=?, @Provider=?, @ProviderUserId=?, @ProviderEmail=?""",
-            (user_email,"facebook",facebook_id,provider_email))
+        params = (user_email, "google", google_id, google_email)
+
+        return self._execute_query(query, params)
 
     def update_last_login_at(self, email):
         """
