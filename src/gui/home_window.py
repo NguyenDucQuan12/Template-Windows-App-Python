@@ -1,16 +1,22 @@
-import customtkinter
+"""
+Giao diện chính của chương trinh
+"""
+import uuid
 from tkinter import ttk, messagebox
 import threading
 import queue
 import logging
 from ctypes import windll
+import customtkinter
 
 # Mở comment 3 dòng bên dưới mỗi khi test (Chạy trực tiếp hàm if __main__)
-import os,sys
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(PROJECT_DIR)
+# import os,sys
+# PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# sys.path.append(PROJECT_DIR)
 
-from services.database_service import My_Database
+from auth.google_auth import GoogleAuthService, GoogleAuthError
+
+from services.database_service import MyDatabase
 from services.email_service import InternalEmailSender
 
 from utils.constants import *
@@ -64,13 +70,20 @@ class HomePage(customtkinter.CTkFrame):
 
         # Khởi tạo lớp gửi email và kết nối đến CSDL
         self.email_sender = InternalEmailSender()
-        self.db = My_Database() 
+        self.db = MyDatabase() 
 
         # Khởi tạo hàng đợi (queue) để nhận kết quả từ luồng thực thi khác
         self.data_user_queue= queue.Queue()
 
         # Đếm số lần thử lại
         self.count_retry = 1
+
+        # Biến khi người dùng liên kết Google, nếu người dùng bấm hủy thì sẽ không thực hiện liên kết nữa
+        self._session_generation = 0
+        self._operation_id = None
+        self._phase = None
+        self.google_service = GoogleAuthService(client_secret_file=resource_path("assets\\config\\google_client_secret.json"),
+                            scopes=["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"])
 
         self.current_time_schedule = None  # Biến lưu trữ thời gian lịch hiện tại
         self.current_date_schedule = None  # Biến lưu trữ thời gian lịch hiện tại
@@ -196,6 +209,7 @@ class HomePage(customtkinter.CTkFrame):
             self.delete_account_button.configure(state="normal")
             self.change_role_account_button.configure(state="normal")
             self.change_password_account_button.configure(state="normal")
+            self.link_google_button.configure(state="normal")
 
     def create_setting_account_login_frame(self, row, column, rowspan, title):
         """
@@ -211,7 +225,11 @@ class HomePage(customtkinter.CTkFrame):
         title.grid(row = 0, column = 0, padx = 5, columnspan = 2)
 
         refresh_data= customtkinter.CTkButton(frame_configure, text="Danh sách tài khoản", anchor="center", command= self.get_infor_all_user)
-        refresh_data.grid(row = 1, column = 0, columnspan = 2, padx = 5, pady = 10)
+        refresh_data.grid(row = 1, column = 0, padx = 5, pady = 10)
+
+        self.link_google_button= customtkinter.CTkButton(frame_configure, text="Liên kết Google", anchor="center", state= "disabled",
+                                                               command= self.start_link_account)
+        self.link_google_button.grid(row = 1, column = 1, padx = 5, pady = 10)
 
         self.activate_account_button= customtkinter.CTkButton(frame_configure, text="Kích hoạt tài khoản", anchor="center", state= "disabled", 
                                                                command= self.activate_account_user)
@@ -328,12 +346,16 @@ class HomePage(customtkinter.CTkFrame):
             self.disable_account_button.configure(state="disabled")
             self.delete_account_button.configure(state="disabled")
             self.change_role_account_button.configure(state="disabled")
+            self.link_google_button.configure(state="disabled")
+            self.change_password_account_button.configure(state="disabled")
             
             # Đóng popup
             # self.hide_loading_popup()
             self.loading.hide()
         else:
             # Nếu không có dữ liệu thì hiển thị thông báo
+            self.link_google_button.configure(state="normal")
+            self.change_password_account_button.configure(state="normal")
             self.hide_loading_popup()
             messagebox.showwarning("Không có dữ liệu", "Không tìm thấy dữ liệu về người dùng.")
             
@@ -395,6 +417,7 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.link_google_button.configure(state="disabled"))
                 logger.info("Đã kích hoạt/ khóa tài khoản: %s thành công", self.username_user_current)
 
                 # Cập nhật lại dữ liệu trên Treeview
@@ -409,7 +432,7 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
-
+                self.after(0, lambda: self.link_google_button.configure(state="disabled"))
         except Exception as e:
             self.after(0, self.hide_loading_popup)
             self.after(0, lambda err = e: messagebox.showerror("Lỗi kết nối", f"Không thể kích hoạt/ khóa tài khoản người dùng:{str(err)}.\nThử lại sau."))
@@ -420,6 +443,7 @@ class HomePage(customtkinter.CTkFrame):
             self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
             self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
             self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.link_google_button.configure(state="disabled"))
 
     def delete_account_user(self):
         """
@@ -439,7 +463,7 @@ class HomePage(customtkinter.CTkFrame):
         Xóa tài khoản người dùng trong luồng riêng
         """
         try:
-            result = self.db.delete_account_user(email= self.email_user_current)
+            result = self.db.delete_account(email= self.email_user_current)
 
             if result["success"]:
                 self.after(0, self.hide_loading_popup)
@@ -451,7 +475,7 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
-
+                self.after(0, lambda: self.link_google_button.configure(state="disabled"))
                 # Cập nhật lại dữ liệu trên Treeview
                 self.after(0, self.get_infor_all_user)
             
@@ -464,6 +488,7 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.link_google_button.configure(state="disabled"))
 
         except Exception as e:
             self.after(0, self.hide_loading_popup)
@@ -475,6 +500,7 @@ class HomePage(customtkinter.CTkFrame):
             self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
             self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
             self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.link_google_button.configure(state="disabled"))
 
     def change_role_user(self):
         """
@@ -507,7 +533,7 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
-
+                self.after(0, lambda: self.link_google_button.configure(state="disabled"))
                 # Cập nhật lại dữ liệu trên Treeview
                 self.after(0, self.get_infor_all_user)
             
@@ -520,6 +546,7 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.link_google_button.configure(state="disabled"))
 
         except Exception as e:
             self.after(0, self.hide_loading_popup)
@@ -531,6 +558,7 @@ class HomePage(customtkinter.CTkFrame):
             self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
             self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
             self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.link_google_button.configure(state="disabled"))
 
     def change_password_user(self):
         """
@@ -576,7 +604,7 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
-
+                self.after(0, lambda: self.link_google_button.configure(state="disabled"))
                 # Cập nhật lại dữ liệu trên Treeview
                 self.after(0, self.get_infor_all_user)
             
@@ -590,6 +618,7 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+                self.after(0, lambda: self.link_google_button.configure(state="disabled"))
 
         except Exception as e:
             self.after(0, self.hide_loading_popup)
@@ -602,6 +631,229 @@ class HomePage(customtkinter.CTkFrame):
             self.after(0, lambda: self.delete_account_button.configure(state="disabled"))
             self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
             self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
+            self.after(0, lambda: self.link_google_button.configure(state="disabled"))
+
+    def start_link_account(self):
+        """
+        Bắt đầu quá trình liên kết tài khoản Google.
+        """
+        if self._phase is not None:
+            return
+
+        if not self.email_user_current:
+            messagebox.showwarning( "Liên kết Google", "Hãy đăng nhập tài khoản nội bộ trước.", parent=self.parent)
+            return
+
+        # Ẩn các nút thao tác trong khi liên kết.
+        self.link_google_button.configure(state="disabled")
+
+        # Tạo một ID duy nhất cho thao tác hiện tại và lưu lại phiên hiện tại.
+        operation_id = uuid.uuid4().hex
+        generation = self._session_generation
+
+        self._operation_id = operation_id
+        self._phase = "google"
+
+        # Callback chạy trong worker, chỉ ghi vào Queue.
+        def on_success(info):
+            self._handle_google_link("ok", operation_id, generation, info)
+
+        def on_error(error):
+            logger.error("Xảy ra lỗi trong lúc liên kết Google: #%s", str(error))
+            self._handle_google_link("error", operation_id, generation, str(error))
+
+        try:
+            self.google_service.start_login(on_success=on_success, on_error=on_error, timeout_seconds=120, port=0)
+        except Exception as e: # pylint: disable=broad-except
+            self._finish()
+            messagebox.showerror("Liên kết Google", "Không khởi động được xác thực Google.", parent=self.parent)
+            logger.error("Xảy ra lỗi trong lúc bắt đầu liên kết Google: #%s", str(e))
+
+    def _handle_google_link(self, kind, operation_id, generation, info):
+        """
+        Xử lý kết quả từ Google.
+        """
+        # Kiểm tra xem kết quả có thuộc thao tác/phiên hiện tại không.
+        if not self._is_current(operation_id, generation):
+            return
+
+        # Xử lý kết quả dựa trên loại (kind).
+        if kind == "ok":
+            self._confirm_link(operation_id, generation, info)
+
+        elif kind == "error":
+            # Tăng số phiên để đảm bảo các thao tác cũ không còn hợp lệ.
+            self._session_generation += 1
+            self._finish()
+            messagebox.showerror("Liên kết Google", f"Xảy ra lỗi trong lúc liên kết Google: {info}", parent=self.parent)
+
+        elif kind == 'database_result':
+            # Tăng số phiên để đảm bảo các thao tác cũ không còn hợp lệ.
+            self._session_generation += 1
+            self._show_database_result(info)
+
+    def _is_current(self, operation_id, generation):
+        """
+        Kiểm tra kết quả có thuộc thao tác/phiên hiện tại không.
+        """
+        return (
+            self.email_user_current is not None
+            and operation_id == self._operation_id
+            and generation == self._session_generation
+        )
+
+    def _confirm_link(self, operation_id, generation, info):
+        """
+        Hiển thị hai tài khoản để người dùng kiểm tra trước khi lưu.
+        """
+        # Đặt trạng thái thao tác hiện tại.
+        self._phase = "confirm"
+
+        # Chụp lại email nội bộ đích.
+        internal_email = self.email_user_current
+
+        google_email = info.get("email")
+        google_label = (
+            google_email
+            if isinstance(google_email, str) and google_email
+            else f"Google ID: {info['sub']}"
+        )
+
+        accepted = messagebox.askyesno(
+            "Xác nhận liên kết Google",
+            (
+                f"Tài khoản nội bộ:\n{internal_email}\n\n"
+                f"Tài khoản Google:\n{google_label}\n\n"
+                "Bạn có muốn liên kết hai tài khoản này không?"
+            ),
+            parent=self.parent,
+        )
+
+        # Dialog có thể chạy event loop lồng nhau.
+        # Phải kiểm tra lại phiên sau khi dialog đóng.
+        if not self._is_current(operation_id, generation):
+            # Đăng ký thao tác hiện tại đã bị hủy, không làm gì nữa.
+            # Đặt lại trạng thái thao tác hiện tại.
+            self._finish()
+            messagebox.showwarning("Liên kết Google", "Thao tác liên kết Google đã bị hủy.", parent=self.parent)
+            return
+
+        if not accepted:
+            self._finish()
+            return
+
+        # Đặt trạng thái thao tác hiện tại là "database" để chuẩn bị lưu vào cơ sở dữ liệu.
+        self._phase = "database"
+
+        worker = threading.Thread(
+            target=self._save_link,
+            args=(operation_id, generation, internal_email, info["sub"], google_email),
+            daemon=True,
+        )
+
+        try:
+            worker.start()
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("Xảy ra lỗi trong lúc khởi động thao tác lưu liên kết: #%s", str(e))
+            self._finish()
+            messagebox.showerror(
+                "Liên kết Google",
+                "Không khởi động được thao tác lưu liên kết.",
+                parent=self.parent,
+            )
+
+    def _save_link(self, operation_id, generation, internal_email, google_id, google_email):
+        """
+        Cập nhật cơ sở dữ liệu để liên kết tài khoản Google với tài khoản nội bộ.
+        """
+        try:
+            result = self.db.link_google_account(user_email=internal_email, google_id=google_id, google_email=google_email)
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("Xảy ra lỗi trong lúc lưu liên kết Google: #%s", str(e))
+            # Không chuyển exception DB thô ra GUI.
+            result = {"success": False, "data": None}
+
+        # Gửi kết quả về GUI.
+        self.after(0, lambda: self._handle_google_link("database_result", operation_id, generation, result))
+
+    def _show_database_result(self, result):
+        """
+        Hiển thị kết quả từ cơ sở dữ liệu sau khi cố gắng liên kết tài khoản Google.
+        """
+        # Kết thúc thao tác hiện tại.
+        self._finish()
+
+        if (not isinstance(result, dict) or result.get("success") is not True):
+            messagebox.showerror(
+                "Liên kết Google",
+                "Chưa xác nhận được kết quả lưu liên kết. Hãy kiểm tra kết nối và thử lại với cùng tài khoản Google.",
+                parent=self.parent,
+            )
+            return
+
+        # Lấy dữ liệu từ kết quả.
+        rows = result.get("data")
+
+        if (
+            not isinstance(rows, (list, tuple))
+            or len(rows) != 1
+            or not isinstance(rows[0], (list, tuple))
+            or len(rows[0]) != 2
+            or rows[0][1] != "google"
+        ):
+            messagebox.showerror(
+                "Liên kết Google",
+                "Procedure trả về kết quả không đúng định dạng.",
+                parent=self.parent,
+            )
+            return
+
+        code = rows[0][0]
+
+        if code in {"LINKED", "ALREADY_LINKED"}:
+            text = (
+                "Liên kết tài khoản Google thành công."
+                if code == "LINKED"
+                else "Tài khoản Google này đã được liên kết với bạn."
+            )
+            messagebox.showinfo("Liên kết Google", text, parent=self.parent)
+            return
+
+        messages = {
+            "EXTERNAL_ACCOUNT_IN_USE": (
+                "Tài khoản Google này đã liên kết với "
+                "một tài khoản nội bộ khác."
+            ),
+            "PROVIDER_ALREADY_LINKED": (
+                "Tài khoản nội bộ của bạn đã liên kết với "
+                "một tài khoản Google khác."
+            ),
+            "USER_NOT_FOUND": (
+                "Tài khoản nội bộ không còn tồn tại. "
+                "Hãy đăng nhập lại."
+            ),
+            "USER_INACTIVE": (
+                "Tài khoản nội bộ chưa được kích hoạt "
+                "hoặc đã bị khóa."
+            ),
+        }
+
+        messagebox.showwarning(
+            "Liên kết Google",
+            messages.get(code, "Không thể liên kết tài khoản. " "Server trả về trạng thái chưa được hỗ trợ."),
+            parent=self.parent,
+        )
+
+    def _finish(self):
+        # Kết thúc thao tác hiện tại, đặt lại trạng thái.
+        self._operation_id = None
+        self._phase = None
+
+        # Tăng số phiên để đảm bảo các thao tác cũ không còn hợp lệ.
+        self._session_generation += 1
+
+        # Mở lại các nút bấm liên kết Google.
+        self.link_google_button.configure(state="disabled" if self.email_user_current is None else "normal")
 
     def show_loading_popup(self):
         """
