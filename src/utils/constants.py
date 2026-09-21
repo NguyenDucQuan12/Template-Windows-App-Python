@@ -1,7 +1,7 @@
 # Tên phần mềm
 APP_NAME_SYSTEM = "DucQuan"
 APP_TITLE = "Nguyễn Đức Quân"
-APP_FOLDER_LOG = "DucQuanLog"
+APP_FOLDER_LOG = "DucQuan_log"
 APP_UPDATER = "Updater.exe"
 
 # Màu sắc
@@ -93,5 +93,9 @@ IMAGE = {
 
 # Danh sách các cột trong bảng người dùng
 ACCOUNT_TABLE_COLUMN_LIST = [
-    "Người dùng", "Tài khoản", "Trạng thái", "Ngày kích hoạt", "Quyền hạn"
+"ID", "Người dùng", "Tài khoản", "Trạng thái", "Ngày kích hoạt", "Quyền hạn", "Phiên bản xác thực"
+]
+# Danh sách các cột trong bảng người dùng hiển thị, không có cột ID vì nó là cột ẩn
+ACCOUNT_DISPLAY_TABLE_COLUMN_LIST = [
+"Người dùng", "Tài khoản", "Trạng thái", "Ngày kích hoạt", "Quyền hạn", "Phiên bản xác thực"
 ]
