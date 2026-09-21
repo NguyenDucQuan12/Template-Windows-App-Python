@@ -9,8 +9,8 @@
 ![image](assets/github/images/login_screen_windows.png)
 
 > [!TIP]
-> 💡 Tài khoản đăng nhập mặc định **Test - Test**  
-> Các tài khoản khác đăng nhập theo : Email và Password  
+> 💡 Các tài khoản đăng nhập theo : Email và Password  
+> Hoặc có thể đăng nhập với Google/Facebook  
 
 Phần mềm được phân quyền với 3 mức độ: `Admin`, `User`, `Guest`  
 
@@ -32,7 +32,7 @@ Khi bạn đã có tài khoản sử dụng nhưng `quên mật khẩu` thì có
 
 ![image](assets/github/images/forgot_password_screen_windows.png)
 
-Yêu cầu người dùng nhập `email đã đăng ký` và ấn nút `Lấy OTP` để nhận 1 mã `6 chữ số` thì mới có thể thay đổi mật khẩu. Mã OTP sẽ được gửi tới mail đã đăng ký, thời hạn của mã OTP sẽ là `5 phút`.  
+Yêu cầu người dùng nhập `email đã đăng ký` và ấn nút `Lấy OTP` để nhận 1 mã `8 ký tự` thì mới có thể thay đổi mật khẩu. Mã OTP sẽ được gửi tới mail đã đăng ký, thời hạn của mã OTP sẽ là `10 phút`.  
 
 ## 2. Trang chủ
 Sau khi đăng nhập phần mềm thành công sẽ tiến vào trang chủ `(nếu tài khoản là admin)`  
@@ -150,7 +150,7 @@ CREATE TABLE dbo.Users
     CONSTRAINT UQ_Users_Email UNIQUE (Email)
 );
 ```
-![image](assets/github/images/create_table_database.png)
+![image](assets/github/images/create_users_table.png)
 
 Nếu lúc tạo bảng mà quên thêm ràng buộc cho cột `Email` thì sử dụng lệnh sau:  
 ```SQL
@@ -163,7 +163,32 @@ Tạo index để tăng tốc độ tìm kiếm dựa trên email người dùng
 ```SQL
 CREATE UNIQUE INDEX UX_Users_Email
 ON dbo.Users(Email);
+``` 
+# 2.2 Tạo bảng UserProfiles
+
+Ta tạo bảng chứa thông tin người dùng  
+```SQL
+CREATE TABLE dbo.UserProfiles
+(
+    UserId VARCHAR(16) NOT NULL,
+    FullName NVARCHAR(200) NULL,
+    PhoneNumber NVARCHAR(30) NULL,
+    DateOfBirth DATE NULL,
+    Address NVARCHAR(500) NULL,
+    AvatarUrl NVARCHAR(2048) NULL,
+    CreatedAt DATETIME2(7) NOT NULL
+        CONSTRAINT DF_UserProfiles_CreatedAt DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME2(7) NOT NULL
+        CONSTRAINT DF_UserProfiles_UpdatedAt DEFAULT SYSUTCDATETIME(),
+    -- Khóa chính
+    CONSTRAINT PK_UserProfiles PRIMARY KEY (UserId),
+    -- Khóa ngoại và quy tắc xóa: Xóa người dùng ở Users sẽ tự động xóa hồ sơ tương ứng ở UserProfiles
+    CONSTRAINT FK_UserProfiles_Users FOREIGN KEY (UserId)
+        REFERENCES dbo.Users (UserId) ON DELETE CASCADE
+);
 ```
+
+![image](assets/github/images/create_userprofiles_table.png)
 
 Sau khi đã có bảng `Users` và `UserProfiles` thì thêm 1 dòng dữ liệu ban đầu để đăng nhập:  
 ```SQL
@@ -205,31 +230,7 @@ VALUES
 ```
 
 > Lưu ý giá trị 2 trường `Password` và `Salt_Password` phải tuân thủ cách mã hóa ở [tệp mã hóa](src/services/hash.py).  
-> Ví dụ mật khẩu phía trên là: `123456789`  
-
-# 2.2 Tạo bảng UserProfiles
-
-Ta tạo bảng chứa thông tin người dùng  
-```SQL
-CREATE TABLE dbo.UserProfiles
-(
-    UserId VARCHAR(16) NOT NULL,
-    FullName NVARCHAR(200) NULL,
-    PhoneNumber NVARCHAR(30) NULL,
-    DateOfBirth DATE NULL,
-    Address NVARCHAR(500) NULL,
-    AvatarUrl NVARCHAR(2048) NULL,
-    CreatedAt DATETIME2(7) NOT NULL
-        CONSTRAINT DF_UserProfiles_CreatedAt DEFAULT SYSUTCDATETIME(),
-    UpdatedAt DATETIME2(7) NOT NULL
-        CONSTRAINT DF_UserProfiles_UpdatedAt DEFAULT SYSUTCDATETIME(),
-    -- Khóa chính
-    CONSTRAINT PK_UserProfiles PRIMARY KEY (UserId),
-    -- Khóa ngoại và quy tắc xóa: Xóa người dùng ở Users sẽ tự động xóa hồ sơ tương ứng ở UserProfiles
-    CONSTRAINT FK_UserProfiles_Users FOREIGN KEY (UserId)
-        REFERENCES dbo.Users (UserId) ON DELETE CASCADE
-);
-```
+> Ví dụ mật khẩu phía trên là: `123456789` 
 
 ## 2.3 Tạo bảng AuthSession
 
@@ -272,6 +273,8 @@ CREATE INDEX IX_AuthSession_Revoked
     WHERE RevokedAt IS NOT NULL;
 ```
 
+![image](assets/github/images/create_authsessions_table.png)
+
 ## 2.4 Tạo bảng UserOTP
 Tạo bảng này chứa thông tin mã OTP  
 ```SQL
@@ -294,6 +297,9 @@ CREATE TABLE dbo.UserOTP
     CONSTRAINT CK_UserOTP_Expires CHECK(ExpiresAt>CreatedAt)
 );
 ```
+
+![image](assets/github/images/create_userotp_table.png)
+
 ## 2.5 Tạo bảng UserExternalLogin
 Tạo bảng này lưu trữ thông tin người dùng đăng nhập bằng nhà cung cấp thứ ba như `Google` hoặc `Facebook`  
 ```SQL
@@ -320,6 +326,9 @@ Tạo index
 CREATE UNIQUE INDEX UX_ExternalLogin_Provider_ProviderUserId
 ON dbo.UserExternalLogin(Provider, ProviderUserId);
 ```
+
+![image](assets/github/images/create_userotp_table.png)
+
 ## 2.6 Tạo các procedure
 
 ### 1. Procedure lấy thông tin chi tiết 1 người
@@ -989,7 +998,15 @@ EXEC dbo.usp_User_Delete @Email=N'quan.new@example.com';
 ```
 ### 7. Liên kết tài khoản đã đăng nhập với Google/Facebook
 Email provider không cần giống email chính. Một định danh bên ngoài chỉ thuộc một UserId; cùng một liên kết gọi lại là hợp lệ. Thiết kế cho phép một người liên kết với một tài khoản/provider.  
-
+Procedure này trả về `Resultcode` như sau:  
+| ResultCode              | Ý nghĩa                                      |
+| ----------------------- | -------------------------------------------- |
+| LINKED                  | Vừa liên kết thành công                      | 
+| ALREADY_LINKED          | Đã liên kết đúng tài khoản này               |
+| EXTERNAL_ACCOUNT_IN_USE | Google này thuộc tài khoản nội bộ khác       |
+| PROVIDER_ALREADY_LINKED | Tài khoản nội bộ đã liên kết Google khác     |
+| USER_NOT_FOUND          | Không tìm thấy tài khoản nội bộ              |
+| USER_INACTIVE           | Tài khoản nội bộ chưa kích hoạt hoặc bị khóa |
 ```SQL
 USE [DucQuanApp];
 GO
@@ -1835,199 +1852,7 @@ BEGIN
 END;
 
 ```
-
-### 3. Procedure liên kết tài khoản nội bộ với google/facebook
-Khi người dùng đăng nhập tài khoản nội bộ, họ muốn liên kết tài khoản này với tài khoản google/facebook thì sử dụng procedure này  
-Procedure này trả về `Resultcode` như sau:  
-| ResultCode              | Ý nghĩa                                      |
-| ----------------------- | -------------------------------------------- |
-| LINKED                  | Vừa liên kết thành công                      | 
-| ALREADY_LINKED          | Đã liên kết đúng tài khoản này               |
-| EXTERNAL_ACCOUNT_IN_USE | Google này thuộc tài khoản nội bộ khác       |
-| PROVIDER_ALREADY_LINKED | Tài khoản nội bộ đã liên kết Google khác     |
-| USER_NOT_FOUND          | Không tìm thấy tài khoản nội bộ              |
-| USER_INACTIVE           | Tài khoản nội bộ chưa kích hoạt hoặc bị khóa |
-```SQL
-USE [DucQuanApp];
-GO
-
-CREATE OR ALTER PROCEDURE dbo.usp_LinkExternalLoginIfNotExists
-    @UserEmail      NVARCHAR(320),
-    @Provider       NVARCHAR(50),
-    @ProviderUserId NVARCHAR(255),
-    @ProviderEmail  NVARCHAR(320) = NULL
-AS
-BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON;
-
-    /*
-        Chỉ gọi từ backend tin cậy:
-        - @UserEmail lấy từ danh tính nội bộ đã xác thực.
-        - @ProviderUserId lấy từ kết quả provider đã xác minh.
-
-        Procedure không tự xác minh token Google/Facebook.
-    */
-    IF @@TRANCOUNT = 0
-        THROW 51100, N'An active transaction is required.', 1;
-
-    SET @UserEmail = LTRIM(RTRIM(@UserEmail));
-    SET @Provider = LOWER(LTRIM(RTRIM(@Provider)));
-    SET @ProviderEmail = NULLIF(LTRIM(RTRIM(@ProviderEmail)), N'');
-
-    IF @UserEmail IS NULL OR LEN(@UserEmail) = 0
-        THROW 51101, N'Địa chỉ email không hợp lệ', 1;
-
-    IF @Provider IS NULL
-       OR @Provider NOT IN (N'google', N'facebook')
-        THROW 51102, N'Chỉ hỗ trợ liên kết với Google/Facebook', 1;
-
-    IF @ProviderUserId IS NULL
-       OR LEN(LTRIM(RTRIM(@ProviderUserId))) = 0
-        THROW 51103, N'Không thể xác định mã định danh từ nhà cung cấp.', 1;
-
-    /*
-        Dùng CÙNG tên lock với procedure resolve/register số 1.
-        Các luồng cùng tuân thủ lock này sẽ không đồng thời tạo hoặc liên kết cùng danh tính.
-    */
-    DECLARE @LockResult INT;
-
-    EXEC @LockResult = sys.sp_getapplock
-        @Resource = N'Quan.ExternalIdentity.ResolveOrRegister.v1',
-        @LockMode = N'Exclusive',
-        @LockOwner = N'Transaction',
-        @LockTimeout = 5000;
-
-    IF @LockResult < 0
-        THROW 51104, N'Luồng đang bận xử lý thao tác khác', 1;
-
-    DECLARE
-        @ResultCode     NVARCHAR(40),
-        @UserCount      BIGINT,
-        @MappingCount   BIGINT,
-        @ProviderCount  BIGINT,
-        @CanonicalEmail NVARCHAR(320),
-        @IsActive      BIT,
-        @OwnerEmail    NVARCHAR(320),
-        @StoredId      NVARCHAR(255);
-
-    -- 1. Kiểm tra tài khoản nội bộ.
-    SELECT @UserCount = COUNT_BIG(*)
-    FROM dbo.Users WITH (UPDLOCK, HOLDLOCK)
-    WHERE Email = @UserEmail;
-
-    IF @UserCount > 1
-        THROW 51105, N'Tài khoản nội bộ trùng lặp, không tiến hành liên kết.', 1;
-
-    IF @UserCount = 0
-    BEGIN
-        SET @ResultCode = N'USER_NOT_FOUND';
-    END
-    ELSE
-    BEGIN
-        SELECT
-            @CanonicalEmail = Email,
-            @IsActive = IsActive
-        FROM dbo.Users
-        WHERE Email = @UserEmail;
-
-        IF ISNULL(@IsActive, 0) <> 1
-        BEGIN
-            SET @ResultCode = N'USER_INACTIVE';
-        END
-        ELSE
-        BEGIN
-            -- 2. Kiểm tra danh tính Google/Facebook này đã thuộc ai chưa?
-            SELECT @MappingCount = COUNT_BIG(*)
-            FROM dbo.UserExternalLogin WITH (UPDLOCK, HOLDLOCK)
-            WHERE Provider = @Provider
-              AND ProviderUserId = @ProviderUserId;
-
-            IF @MappingCount > 1
-                THROW 51106, N'Có 2 tài khoản cùng sử dụng danh tính này. Không thể liên kết.', 1;
-
-            -- 3. User này đã liên kết provider đó chưa?
-            SELECT @ProviderCount = COUNT_BIG(*)
-            FROM dbo.UserExternalLogin WITH (UPDLOCK, HOLDLOCK)
-            WHERE UserEmail = @CanonicalEmail
-              AND Provider = @Provider;
-
-            IF @ProviderCount > 1
-                THROW 51107, N'Tài khoản này đã được liên kết với tài khoản nội bộ khác.', 1;
-
-            IF @MappingCount = 1
-            BEGIN
-                SELECT
-                    @OwnerEmail = UserEmail,
-                    @StoredId = ProviderUserId
-                FROM dbo.UserExternalLogin
-                WHERE Provider = @Provider
-                  AND ProviderUserId = @ProviderUserId;
-
-                /*
-                    Không để collation không phân biệt hoa/thường
-                    biến hai ID khác nhau thành cùng danh tính.
-                */
-                IF @StoredId IS NULL
-                   OR @StoredId COLLATE Latin1_General_100_BIN2
-                      <> @ProviderUserId COLLATE Latin1_General_100_BIN2
-                   OR DATALENGTH(@StoredId) <> DATALENGTH(@ProviderUserId)
-                    THROW 51108, N'Không tìm thấy tài khoản có định danh được cung cấp từ Google/Facebook', 1;
-
-                IF @OwnerEmail = @CanonicalEmail
-                    SET @ResultCode = N'ALREADY_LINKED';
-                ELSE
-                    SET @ResultCode = N'EXTERNAL_ACCOUNT_IN_USE';
-            END
-            ELSE IF @ProviderCount > 0
-            BEGIN
-                /*
-                    User đã có Google G1 nhưng đang muốn thêm Google G2.
-                    Không tự thay thế G1.
-                */
-                SET @ResultCode = N'PROVIDER_ALREADY_LINKED';
-            END
-            ELSE
-            BEGIN
-                -- 4. Tạo liên kết mới.
-                DECLARE @Now DATETIME2(7) = SYSUTCDATETIME();
-
-                INSERT INTO dbo.UserExternalLogin
-                (
-                    UserEmail,
-                    Provider,
-                    ProviderUserId,
-                    ProviderEmail,
-                    CreatedAt,
-                    UpdatedAt
-                )
-                VALUES
-                (
-                    @CanonicalEmail,
-                    @Provider,
-                    @ProviderUserId,
-                    @ProviderEmail,
-                    @Now,
-                    @Now
-                );
-
-                SET @ResultCode = N'LINKED';
-            END;
-        END;
-    END;
-
-    /*
-        Không trả email chủ sở hữu tài khoản khác khi xung đột.
-        Không dùng SELECT *.
-    */
-    SELECT
-        @ResultCode AS ResultCode,
-        @Provider AS Provider;
-END;
-GO
-```
-
-## 2.6 Tạo tài khoản đăng nhập vào CSDL
+## 2.7 Tạo tài khoản đăng nhập vào CSDL
 
 Để có thể có quyền truy cập vào CSDL bằng tài khoản thì ta cần tạo tài khoản login, tạo người dùng và cấp quyền trong SQL Server:
 
@@ -2082,7 +1907,7 @@ Các lệnh `DENY`, `GRANT`, `REVOKE`, và `ALTER ROLE` đều được sử d�
 
 `DENY`, `GRANT`, `REVOKE` chỉ áp dụng cho người dùng hoặc vai trò (role) trên một đối tượng trong cơ sở dữ liệu (ví dụ: bảng, view, thủ tục, v.v.).   
 
-### 2.6.1 GRANT - Cấp quyền cho người dùng hoặc nhóm người dùng
+### 2.7.1 GRANT - Cấp quyền cho người dùng hoặc nhóm người dùng
 
 - Mục đích: Cấp quyền cho người dùng hoặc vai trò (role) trên một đối tượng trong cơ sở dữ liệu (ví dụ: bảng, view, thủ tục, v.v.).  
 
@@ -2096,7 +1921,7 @@ GRANT SELECT ON dbo.Users TO ducquan_user;  -- Chỉ cấp quyền SELECT cho ng
 GRANT SELECT, INSERT, UPDATE ON dbo.Users TO ducquan_user;  -- Cấp quyền SELECT, INSERT và UPDATE, không cấp quyền DELETE
 ```
 
-### 2.6.2 DENY - Từ chối quyền của người dùng cho các thao tác vs DB 
+### 2.7.2 DENY - Từ chối quyền của người dùng cho các thao tác vs DB 
 
 - Mục đích: Từ chối quyền cho người dùng hoặc vai trò đối với một đối tượng trong cơ sở dữ liệu.  
 
@@ -2109,7 +1934,7 @@ GRANT SELECT, INSERT, UPDATE ON dbo.Users TO ducquan_user;  -- Cấp quyền SEL
 DENY SELECT ON dbo.Users TO ducquan_user;  -- Từ chối quyền SELECT của người dùng đối với bảng trong DB
 ```
 
-### 2.6.3 REVOKE - Thu hồi quyền của người dùng
+### 2.7.3 REVOKE - Thu hồi quyền của người dùng
 
 - Mục đích: Thu hồi quyền mà bạn đã cấp trước đó. `REVOKE` sẽ loại bỏ quyền truy cập của người dùng hoặc vai trò đối với một đối tượng mà quyền đó đã được cấp.  
 
@@ -2122,7 +1947,7 @@ DENY SELECT ON dbo.Users TO ducquan_user;  -- Từ chối quyền SELECT của n
 REVOKE SELECT ON dbo.Users TO ducquan_user; -- Thu hồi quyền SELECT đổi với người dùng
 ```
 
-### 2.6.4 ALTER ROLE
+### 2.7.4 ALTER ROLE
 
 - Mục đích: Thay đổi vai trò của người dùng `trong cơ sở dữ liệu`. Lệnh này cho phép bạn thêm hoặc xóa người dùng từ một vai trò cụ thể `trong cơ sở dữ liệu`.  
 
@@ -2136,7 +1961,7 @@ REVOKE SELECT ON dbo.Users TO ducquan_user; -- Thu hồi quyền SELECT đổi v
 ALTER ROLE db_datareader ADD MEMBER ducquan_user;
 ```
 
-### 2.6.5 Cách truy vấn các quyền đã cấp cho tài khoản người dùng
+### 2.7.5 Cách truy vấn các quyền đã cấp cho tài khoản người dùng
 
 Kiểm tra các `vai trò` (vai trò được thêm bởi lệnh `ALTER ROLE`) mà người dùng đã tham gia, ví dụ đối với người dùng `ducquan_user`:  
 ```SQL
