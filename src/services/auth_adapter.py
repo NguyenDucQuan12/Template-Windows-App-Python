@@ -78,7 +78,6 @@ class AuthSession:
             "expires_at": self.expires_at.isoformat()
         }
 
-
 def expiry_utc(value):
     """
     Chuẩn hóa thời gian về UTC  
@@ -100,14 +99,12 @@ def expiry_utc(value):
 
     return value.astimezone(timezone.utc)
 
-
 def active(value):
     """
     Kiểm tra trạng thái tài khoản
     """
     # Không dùng truthiness: chuỗi "False" cũng là truthy.
     return value is True or (type(value) is int and value == 1)
-
 
 def role(value):
     """
@@ -116,7 +113,6 @@ def role(value):
     if not isinstance(value, str) or not value.strip():
         raise BackendUnavailable("Server chưa trả quyền hợp lệ")
     return value
-
 
 class DatabaseAuthAdapter:
     """
@@ -152,19 +148,21 @@ class DatabaseAuthAdapter:
     @staticmethod
     def _rows(result):
         """
-        Kiểm tra kết quả trả về
+        Kiểm tra kết quả trả về và lấy dữ liệu từ trường "data"
         """
         # Chỉ chấp nhận phản hồi dictionary với success là đúng Boolean True.
-        if not isinstance(result, dict) or result.get("success") is not True:
-            raise BackendUnavailable("Dịch vụ xác thực tạm thời không khả dụng")
+        if result.get("success") is not True:
+            raise BackendUnavailable(result.get("message", "Không thể lấy dữ liệu từ backend"))
 
         # Lấy dữ liệu từ DB
         data = result.get("data")
         if data is None:
             return []
 
+        # Chỉ chấp nhận dữ liệu là list hoặc tuple, không chấp nhận dict hoặc các kiểu khác.
         if not isinstance(data, (list, tuple)):
             raise BackendUnavailable("Kết quả xác thực sai định dạng")
+
         return data
 
     def _restore(self, db, token, provider):
@@ -176,7 +174,7 @@ class DatabaseAuthAdapter:
         if not rows:
             raise InvalidSession("Phiên đã hết hạn hoặc bị thu hồi. Hãy đăng nhập lại.")
 
-        if len(rows) != 1 or len(rows[0]) < 6:
+        if len(rows) != 1:
             raise BackendUnavailable("Dữ liệu phiên không đúng cấu trúc")
 
         # User_Name, Email, IsActive, Privilege, Status, ExpiresAt.
@@ -206,7 +204,7 @@ class DatabaseAuthAdapter:
 
             return session
 
-    def _remember(self, db, session, remember):
+    def _remember(self, db, session, remember, expected_auth_version = 1):
         """
         Tạo token khi người dùng bấm ghi nhớ đăng nhập
         """
@@ -218,7 +216,7 @@ class DatabaseAuthAdapter:
         token = None
         try:
             # Tạo thông tin lưu trữ trên DB
-            result = db.create_session_by_email(email=session.email, days=REMEMBER_DAYS, device_info="Quan Desktop (" + session.provider + ")")
+            result = db.create_session_by_email(email=session.email, days=REMEMBER_DAYS, device_info="Quan Desktop (" + session.provider + ")", expected_auth_version= expected_auth_version)
 
             # Nếu không được thì báo lỗi
             if not isinstance(result, dict) or result.get("success") is not True:
@@ -259,6 +257,7 @@ class DatabaseAuthAdapter:
             row = rows[0]
             stored_hash = row[0]
             stored_salt = row[1]
+            stored_auth_version = row[6]
 
             # Khi đăng nhập bằng google/facebook thì 2 trường này Null
             if stored_hash is None or stored_salt is None:
@@ -285,7 +284,7 @@ class DatabaseAuthAdapter:
                 pass
 
             # Tiếp bước xử lý có ghi nhớ thông tin đăng nhập hay không
-            return self._remember(db, session, remember)
+            return self._remember(db, session, remember, expected_auth_version=stored_auth_version)
 
     def oauth_login(self, provider, info, remember):
         """
@@ -339,15 +338,15 @@ class DatabaseAuthAdapter:
                 provider=provider,
                 provider_user_id=identifier,
                 provider_email=email,
-                display_name=display_name,
+                display_name=display_name
             )
 
             rows = self._rows(result)
-            if len(rows) != 1 or len(rows[0]) != 7:
+            if len(rows) != 1:
                 raise BackendUnavailable("Database trả kết quả đăng nhập không đúng cấu trúc")
 
             # Lấy kết quả trả về
-            result_code, internal_email, _internal_name, permission, is_active, stored_provider, stored_identifier = rows[0]
+            result_code, _user_id, _user_name, internal_email, _internal_full_name, permission, is_active, stored_provider, stored_identifier, stored_auth_version = rows[0]
 
             # internal_name hiện chưa dùng để cấp quyền.
             # Có thể dùng hiển thị nếu AuthSession được mở rộng sau này.
@@ -384,11 +383,13 @@ class DatabaseAuthAdapter:
 
             if not active(is_active):
                 raise AccountInactive("Tài khoản chưa được phép đăng nhập")
+            if not isinstance(stored_auth_version, int):
+                raise InvalidCredentials("Phiên bản xác thực không khớp")
 
             # Tạo Session cho việc ghi nhớ đăng nhập
-            session = AuthSession(email=internal_email,permission=role(permission),provider=provider,)
+            session = AuthSession(email=internal_email,permission=role(permission),provider=provider)
 
-            return self._remember(db, session, bool(remember))
+            return self._remember(db, session, bool(remember), expected_auth_version=stored_auth_version)
 
     @staticmethod
     def _revoke(db, token):
