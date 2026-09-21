@@ -40,7 +40,7 @@ from gui.home_window import HomePage
 from gui.database_window import DatabasePage
 
 # import các hàm hỗ trợ
-from utils.constants import (APP_NAME_SYSTEM, APP_TITLE, FILE_PATH, IMAGE, APP_UPDATER, HOME_NAV, CHAT_NAV, DATABASE_NAV, LOGOUT_NAV, PERMISSION)
+from utils.constants import APP_NAME_SYSTEM, APP_TITLE, FILE_PATH, IMAGE, APP_UPDATER, HOME_NAV, CHAT_NAV, DATABASE_NAV, LOGOUT_NAV, PERMISSION
 from utils.check_running import single_instance, AlreadyRunningError
 from utils.resource import resource_path
 from logger.logger import change_log_file_path, delete_old_logs, log_file_path
@@ -58,7 +58,7 @@ logger = logging.getLogger()
 # Dòng dưới sẽ ngăn chặn việc có những log không mong muốn từ thư viện PILLOW
 # ví dụ: 2020-12-16 15:21:30,829 - DEBUG - PngImagePlugin - STREAM b'PLTE' 41 768
 logging.getLogger("PIL.PngImagePlugin").propagate = False
-# Cấu hình file log: 
+# Cấu hình file log:
 logging.basicConfig(filename=log_file_path, filemode= 'a',
                     format='%(asctime)s %(levelname)s:\t %(filename)s - Line: %(lineno)d message: %(message)s',
                     datefmt='%d/%m/%Y %I:%M:%S %p', encoding = 'utf-8', force=True)
@@ -104,7 +104,7 @@ class NavItem:
     icon_light: str
     icon_dark: str
     required_permissions: tuple
-    frame_class: Optional[Type[CTkFrameType]]  
+    frame_class: Optional[Type[CTkFrameType]]
 class App(ctk.CTk):
     """
     Lớp chính của ứng dụng, kế thừa từ ctk.CTk (CustomTkinter)
@@ -145,7 +145,7 @@ class App(ctk.CTk):
                 icon_dark ="DATABASE_NAVIGATION_DARK_IMG",
                 required_permissions=(PERMISSION["ADMIN"], PERMISSION["USER"]),
                 frame_class=DatabasePage
-            )
+            ),
         }
         self.logout_items: Dict[str, NavItem] = {
             LOGOUT_NAV: NavItem(
@@ -270,7 +270,7 @@ class App(ctk.CTk):
             )
             # Đặt ở dưới spacer
             self.logout_button.grid(row=row_idx + 1, column=0, sticky="ew")
-            # self.nav_buttons[LOGOUT_NAV] = self.logout_button     # Không thêm vào nav_buttons vì ko cần highlight, và khi duyêt nav ko cần check quyền, ai cũng có thể thấy
+            # self.nav_buttons[LOGOUT_NAV] = self.logout_button     # Không thêm vào nav_buttons vì ko cần highlight, và khi duyệt nav ko cần check quyền, ai cũng có thể thấy
 
         # Menu đổi theme
         self.appearance_mode_menu = ctk.CTkOptionMenu(
