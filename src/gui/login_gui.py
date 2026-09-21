@@ -8,11 +8,17 @@ import time
 import logging
 import string
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import re
 from tkinter import messagebox, TclError
 import customtkinter as ctk
 from PIL import Image
+
+# Mở comment 3 dòng bên dưới mỗi khi test (Chạy trực tiếp hàm if __main__)
+# import os,sys
+# PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# sys.path.append(PROJECT_DIR)
+
 from utils.constants import FILE_PATH
 from utils.resource import resource_path
 from utils.secure_session_store import SessionStore, StoreError, scrub_legacy_config
@@ -37,7 +43,7 @@ class LoginWindow(ctk.CTkToplevel):
     def __init__(self, master, on_success, on_close, software_name="Quan", *,
                  auto_login=True, session_store=None, auth_adapter=None,
                  account_service=None, oauth_factories=None):
-        
+
         super().__init__(master)
         # Khởi tạo các trạng thái
         self._closed = False                                                    # Cửa sổ này đã đóng hay chưa
@@ -180,7 +186,7 @@ class LoginWindow(ctk.CTkToplevel):
         self.passwd_entry.bind("<Return>", lambda event: self.check_login())  # Khi nhấn Enter trên password
 
         # Hiển thị password
-        self.show_password = ctk.CTkCheckBox(master=self.login_frame, text="Hiện mật khẩu", font=('', 12), text_color="black", height=10, 
+        self.show_password = ctk.CTkCheckBox(master=self.login_frame, text="Hiện mật khẩu", font=('', 12), text_color="black", height=10,
                                              command=lambda: self.toggle_password(self.passwd_entry, self.show_password_var), variable=self.show_password_var)
         self.show_password.grid(row=3,column=0,sticky="nw", padx=(30,0))
 
@@ -217,13 +223,13 @@ class LoginWindow(ctk.CTkToplevel):
 
         # Google login
         g_logo = ctk.CTkImage(Image.open(resource_path("assets\\images\\login_img\\google_logo.png")).resize((20, 20), Image.Resampling.LANCZOS))
-        self.g_button = ctk.CTkButton(master=self.login_frame, width=100, image=g_logo, text="Google", corner_radius=6, fg_color="white", 
+        self.g_button = ctk.CTkButton(master=self.login_frame, width=100, image=g_logo, text="Google", corner_radius=6, fg_color="white",
                                       text_color="black", compound="left", hover_color="#f0f0f0", anchor="w", cursor="hand2", command= self.login_with_google_click)
         self.g_button.grid(row=7,column=0,sticky="w",pady=(0,20), padx=35)
 
         # Facebook login
         fb_logo = ctk.CTkImage(Image.open(resource_path("assets\\images\\login_img\\fb_logo.png")).resize((20, 20), Image.Resampling.LANCZOS))
-        self.fb_button = ctk.CTkButton(master=self.login_frame, width=100, image=fb_logo, text="Facebook", corner_radius=6, fg_color="white", 
+        self.fb_button = ctk.CTkButton(master=self.login_frame, width=100, image=fb_logo, text="Facebook", corner_radius=6, fg_color="white",
                                        text_color="black", compound="left", hover_color="#f0f0f0", anchor="w", cursor="hand2", command= self.login_with_facebook_click)
         self.fb_button.grid(row=7,column=0,sticky="e",pady=(0,20), padx=35)
 
@@ -705,7 +711,7 @@ class LoginWindow(ctk.CTkToplevel):
 
             # Nếu sử dụng google thì chạy
             elif provider == "google":
-                
+
                 service = GoogleAuthService(
                     client_secret_file=resource_path("assets\\config\\google_client_secret.json"),
                     scopes=[
@@ -791,7 +797,7 @@ class LoginWindow(ctk.CTkToplevel):
         Tạo OTP (One Time Password) ngẫu nhiên bằng thư viện secrets và string
         """
         # Các ký tự được thêm cuối cùng
-        symbols = ['*', '%', '£', '#', '$'] 
+        symbols = ['*', '%', '£', '#', '$']
 
         password = ""
         # Tạo 8 ký tự cho mật khẩu
@@ -799,7 +805,7 @@ class LoginWindow(ctk.CTkToplevel):
             # Mật khẩu chứa các ký tự chữ cái (thường và hoa) cùng với các chữ số
             # Nếu chỉ muốn các chữ cái thường thì sử dụng: ascii_lowercase, chữ cái hoa thì sử dụng: ascii_uppercase
             password += secrets.choice(string.ascii_letters + string.digits)
-        
+
         # Thêm 1 ký tự đặc biệt vào sau cùng
         password += secrets.choice(symbols)
 
@@ -814,14 +820,13 @@ class LoginWindow(ctk.CTkToplevel):
         if not self.is_valid_email(email):
             messagebox.showwarning("Cảnh báo","Địa chỉ email không hợp lệ.")
             return
-        
+
         # Tạo ngẫu nhiên 1 OTP và cập nhật lên CSDL
         gen_otp = self.generate_random_otp()
 
         # Tạo thời gian hết hạn của OTP sau 10 phút
-        current_time = datetime.now()
+        current_time = datetime.now(timezone.utc)
         expired_otp_time = current_time + timedelta(minutes=10)
-        
 
         # Backend tự sinh, gửi, hash, giới hạn thử và kiểm tra OTP; exe không đọc OTP DB.
         self._submit(self.get_otp_for_reset_password_in_thread, gen_otp, expired_otp_time, email, kind="message")
@@ -854,6 +859,8 @@ class LoginWindow(ctk.CTkToplevel):
         self.after(0, lambda: self.get_otp_button.configure(state = "disabled"))
         self.after(1000*30, lambda: self.get_otp_button.configure(state = "normal"))
 
+        return f"Mã OTP đã được gửi đến email {email}. Hãy kiểm tra hộp thư đến hoặc thư mục spam."
+
     def reset_password(self):
         """
         Đặt lại mật khẩu
@@ -876,43 +883,24 @@ class LoginWindow(ctk.CTkToplevel):
         check_user = self.database.get_username(email= email)
 
         if check_user["success"]:
-            try:
-                # Lấy mã OTP và thời gian hết hạn của nó
-                get_otp = self.database.get_otp_and_expired_time(email= email)
+            # Lấy mã OTP và thời gian hết hạn của nó
+            get_otp = self.database.verify_and_consume_otp(email= email, otp= otp_code)
 
-                # Kiểm tra kết quả trả về
-                if get_otp["success"]:
+            # Kiểm tra kết quả trả về
+            if get_otp["success"]:
+                # Nếu OTP đúng và chưa hết hạn, tiến hành thay đổi mật khẩu
+                confirm_change_pw = self.database.update_password_user(email=email, password=password, user_id= get_otp["user_id"], expected_auth_version= get_otp["auth_version"])
 
-                    if get_otp["data"]:
-                        otp_server = get_otp["data"][0][0]
-                        expired_time_otp_server = get_otp["data"][0][1]
+                # Thông báo thành công
+                if confirm_change_pw["success"]:
+                    return "Mật khẩu của bạn đã được cập nhật thành công!"
+                else:
+                    raise NewAccountError(f"{confirm_change_pw["message"]}, vui lòng thử lại.")
 
-                        # So sánh mã OTP
-                        if otp_code != otp_server:
-                            raise NewAccountError("Mã OTP bạn nhập không đúng. Hãy thử lại sau 10 phút.")
-
-                        # Kiểm tra xem mã OTP có hết hạn chưa
-                        current_time = datetime.now()
-                        if current_time > expired_time_otp_server:
-                            raise NewAccountError("Mã OTP của bạn đã hết hạn. Hãy thử lại với mã OTP mới hơn.")
-
-                        # Nếu OTP đúng và chưa hết hạn, tiến hành thay đổi mật khẩu
-                        confirm_change_pw = self.database.update_password_user(email=email, password=password)
-
-                        # Thông báo thành công
-                        if confirm_change_pw["success"]:
-                            return "Mật khẩu của bạn đã được cập nhật thành công!"
-                        else:           
-                            raise NewAccountError(f"{confirm_change_pw["message"]}, vui lòng thử lại.")
-                    
-                    else:
-                        raise NewAccountError(f"{get_otp["message"]}. Không thể cập nhật mật khẩu \nLiên hệ bộ phận IT để xử lý.")
-
-            except Exception as e:
-                raise NewAccountError(f"Xảy ra lỗi: {str(e)}. \nHãy thử lại sau.")
+            else:
+                raise NewAccountError(f"{get_otp["message"]}. Không thể cập nhật mật khẩu \nLiên hệ bộ phận IT để xử lý.")
         else:
             raise NewAccountError(f"{check_user["message"]} \nVui lòng thử lại sau.")
-    
 
     def create_new_account(self):
         """
@@ -937,8 +925,8 @@ class LoginWindow(ctk.CTkToplevel):
         if check_user["success"]:
             if check_user["data"]:
                 raise NewAccountError(f"Email {email} đã được đăng ký. \nVui lòng sử dụng email khác.")
-        else:
-            raise NewAccountError(f"Có lỗi xảy ra: {check_user['message']} \nVui lòng thử lại sau.")
+            else:
+                raise NewAccountError(f"Có lỗi xảy ra: {check_user['message']} \nVui lòng thử lại sau.")
 
         # Lưu thông tin tài khoản mới vào CSDL
         create_new_user_result = self.database.create_new_user(username= username, email= email, password= password)
@@ -947,7 +935,7 @@ class LoginWindow(ctk.CTkToplevel):
             return message
 
         else:
-            # Nếu có lỗi xảy ra trong quá trình tạo tài khoản, thông báo lỗi  
+            # Nếu có lỗi xảy ra trong quá trình tạo tài khoản, thông báo lỗi
             raise NewAccountError(f"{create_new_user_result['message']} \nVui lòng thử lại sau.")
 
     def on_closing(self):
@@ -991,7 +979,7 @@ class LoginWindow(ctk.CTkToplevel):
             # Token mới chưa dùng thì tiến hành thu hồi
             if isinstance(result, AuthSession) and result.newly_issued:
                 self._revoke_later(result.token)
-                
+
         # Nếu service hỗ trợ cancel(), gọi trên worker; không join chặn UI.
         cancel = getattr(self._oauth_service, "cancel", None)
         if callable(cancel):
@@ -1002,3 +990,11 @@ class LoginWindow(ctk.CTkToplevel):
             except TclError:
                 pass
         super().destroy()
+
+if __name__ == "__main__":
+
+    root = ctk.CTk()
+    root.title("Test chức năng")
+    # Tạo cửa sổ đăng nhập
+    login_window = LoginWindow(master = root, on_success=lambda session: print(f"Đăng nhập thành công với email: {session.email}"), on_close=lambda: print("Đóng cửa sổ đăng nhập"))
+    root.mainloop()
