@@ -6,7 +6,6 @@ from tkinter import ttk, messagebox
 import threading
 import queue
 import logging
-from ctypes import windll
 import customtkinter
 
 # Mở comment 3 dòng bên dưới mỗi khi test (Chạy trực tiếp hàm if __main__)
@@ -14,45 +13,20 @@ import customtkinter
 # PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # sys.path.append(PROJECT_DIR)
 
-from auth.google_auth import GoogleAuthService, GoogleAuthError
-
+from auth.google_auth import GoogleAuthService
 from services.database_service import MyDatabase
 from services.email_service import InternalEmailSender
-
-from utils.constants import *
+from utils.constants import COLOR, ACCOUNT_TABLE_COLUMN_LIST, ACCOUNT_DISPLAY_TABLE_COLUMN_LIST, LIST_PERMISSION
 from utils.loading_gif import LoadingGifLabel
 from utils.resource import resource_path
 from utils.modal_loading import ModalLoadingPopup
+from utils.utils import get_screen_dpi
 
 from schedule_work.schedule_work import Schedule_Auto
 
 
 
 logger = logging.getLogger(__name__)
-
-def get_screen_dpi():
-    """
-    Tính toán DPI của màn hình thiết bị Windows
-    Bởi customTkinter hỗ trợ tự động điều chỉnh giao diện tùy theo DPI của màn hình máy tính  
-    Còn Treeview của Tkinter thì không hỗ trợ tự động điều chỉnh DPI, nên cần phải tính toán giá trị DPI của màn hình rồi đưa ra font size phù hợp
-    """
-    base_font_size = 10  # Kích thước font mặc định cho DPI 96 (Là scale 100% trên Windows)
-    base_row_height = 28  # Kích thước font mặc định cho DPI 96 (Là scale 100% trên Windows)
-
-    LOGPIXELSX = 88  # Horizontal DPI
-    LOGPIXELSY = 90  # Vertical DPI
-
-    user32 = windll.user32
-    user32.SetProcessDPIAware()  # Important for accurate results
-    dc = user32.GetDC(0)
-    horizontal_dpi = windll.gdi32.GetDeviceCaps(dc, LOGPIXELSX)
-    vertical_dpi = windll.gdi32.GetDeviceCaps(dc, LOGPIXELSY)
-    user32.ReleaseDC(0, dc)
-
-    # Tính toán kích thước font dựa trên DPI
-    font_size = int(base_font_size * (vertical_dpi / 96))
-    row_height = int(base_row_height * (vertical_dpi / 96))
-    return font_size, row_height
 
 class HomePage(customtkinter.CTkFrame):
     """
@@ -93,6 +67,15 @@ class HomePage(customtkinter.CTkFrame):
 
         self.loading = ModalLoadingPopup(parent)  # truyền frame làm parent
 
+        # Các biến lưu trữ thông tin người dùng hiện tại được chọn trong treeview
+        self.user_id_current = None
+        self.username_user_current = None
+        self.email_user_current = None
+        self.activate_user_current = None
+        self.activated_at_user_current = None
+        self.role_user_current = None
+        self.auth_version_user_current = None
+
         # set grid layout 1x2
         # self.grid_rowconfigure(0, weight=1)
         # self.grid_columnconfigure(1, weight=1)
@@ -119,12 +102,14 @@ class HomePage(customtkinter.CTkFrame):
 
         # Tạo treeview table đưa vào frame
         treeview = self.create_treeview_table(parent= frame_configure, number_value = 10)
+        # Chỉ cho chọn một tài khoản mỗi lần.
+        treeview.configure(selectmode="browse")
 
-        # Lắng nghe sự kiện click vào dòng trong Treeview
-        treeview.bind("<ButtonRelease-1>", self.on_treeview_select)
+        # Gọi hàm xử lý khi lựa chọn thay đổi, kể cả bằng bàn phím.
+        treeview.bind("<<TreeviewSelect>>", self.on_treeview_select)
 
         return treeview
-    
+
     def create_treeview_table(self, parent, number_value):
         """
         Tạo treeview để hiển thị danh sách dữ liệu theo bảng
@@ -190,26 +175,70 @@ class HomePage(customtkinter.CTkFrame):
 
         return treeview
 
-    def on_treeview_select(self, event):
+    def on_treeview_select(self, _event):
         """
         Xử lý sự kiện click vào dòng trong Treeview
         """
-        selected_item = self.treeview_account.focus()  # Lấy ID của dòng đã chọn
+        # Lấy đối tượng Treeview từ sự kiện
+        treeview = self.treeview_account
 
-        if selected_item:
-            values = self.treeview_account.item(selected_item, 'values')  # Lấy giá trị của dòng đó
-            self.username_user_current = values[0]  # Tên người dùng
-            self.email_user_current = values[1]  # Email đăng nhập
-            self.activate_user_current = values[2]  # Ngày kích hoạt
-            self.role_user_current = values[3]  # Quyền hạn
+        # Lấy danh sách các dòng được chọn trong Treeview
+        selected_items = treeview.selection()
+        if not selected_items:
+            self.clear_selected_account()
+            return
 
-            # Kích hoạt các nút bấm
-            self.activate_account_button.configure(state="normal")
-            self.disable_account_button.configure(state="normal")
-            self.delete_account_button.configure(state="normal")
-            self.change_role_account_button.configure(state="normal")
-            self.change_password_account_button.configure(state="normal")
-            self.link_google_button.configure(state="normal")
+        # Lấy ID của dòng được chọn (chỉ lấy dòng đầu tiên nếu có nhiều dòng được chọn)
+        selected_item = selected_items[0]
+        # Trường hợp dòng đã bị xóa khi bảng được làm mới.
+        if not treeview.exists(selected_item):
+            self.clear_selected_account()
+            return
+
+        values = self.treeview_account.item(selected_item, 'values')  # Lấy giá trị của dòng đó
+        self.user_id_current = values[0]  # ID người dùng
+        self.username_user_current = values[1]  # Tên người dùng
+        self.email_user_current = values[2]  # Email đăng nhập
+        self.activate_user_current = values[4]  # Ngày kích hoạt
+        self.role_user_current = values[5]  # Quyền hạn
+        self.auth_version_user_current = values[6]  # Phiên bản xác thực
+
+        # Không cho thao tác nếu dòng không có UserId.
+        if not self.user_id_current:
+            self.clear_selected_account()
+            return
+
+        # Mở khóa các nút thao tác khi có dòng được chọn
+        for button in (
+            self.activate_account_button,
+            self.disable_account_button,
+            self.delete_account_button,
+            self.change_role_account_button,
+            self.change_password_account_button,
+            self.link_google_button,
+        ):
+            button.configure(state="normal")
+
+    def clear_selected_account(self):
+        """
+        Xóa thông tin tài khoản đang chọn và khóa các nút thao tác.
+        """
+        self.user_id_current = None
+        self.username_user_current = None
+        self.email_user_current = None
+        self.activate_user_current = None
+        self.activated_at_user_current = None
+        self.role_user_current = None
+        # Khóa các nút thao tác khi không có dòng nào được chọn
+        for button in (
+            self.activate_account_button,
+            self.disable_account_button,
+            self.delete_account_button,
+            self.change_role_account_button,
+            self.change_password_account_button,
+            self.link_google_button,
+        ):
+            button.configure(state="disabled")
 
     def create_setting_account_login_frame(self, row, column, rowspan, title):
         """
@@ -224,7 +253,7 @@ class HomePage(customtkinter.CTkFrame):
         title = customtkinter.CTkLabel(master= frame_configure, text= title, anchor="center", bg_color= "transparent")
         title.grid(row = 0, column = 0, padx = 5, columnspan = 2)
 
-        refresh_data= customtkinter.CTkButton(frame_configure, text="Danh sách tài khoản", anchor="center", command= self.get_infor_all_user)
+        refresh_data= customtkinter.CTkButton(frame_configure, text="Danh sách tài khoản", anchor="center", command= self.get_info_all_user)
         refresh_data.grid(row = 1, column = 0, padx = 5, pady = 10)
 
         self.link_google_button= customtkinter.CTkButton(frame_configure, text="Liên kết Google", anchor="center", state= "disabled",
@@ -259,12 +288,12 @@ class HomePage(customtkinter.CTkFrame):
         self.change_password_account_button.grid(row = 6, column = 0, columnspan = 2, padx = 5, pady = 10)
 
         # OptionMenu hiển thị danh sách quyền hạn người dùng
-        self.optionmenue_privilege_user = customtkinter.StringVar(value=LIST_PERMISSION[-1])
+        self.optionmenu_privilege_user = customtkinter.StringVar(value=LIST_PERMISSION[-1])
         optionmenu = customtkinter.CTkOptionMenu(
             frame_configure,
             values=LIST_PERMISSION,
             anchor="center",
-            variable=self.optionmenue_privilege_user,
+            variable=self.optionmenu_privilege_user,
             # command=self.check_select_day_filter  # Gắn callback khi thay đổi
         )
         optionmenu.grid(row=4, column=1, padx=5, pady= 10, sticky="w")
@@ -272,27 +301,25 @@ class HomePage(customtkinter.CTkFrame):
     def not_available(self):
         messagebox.showinfo("Thông báo", "Chức năng đang trong chế độ bảo trì! \nVui lòng thử lại sau.")
         return
-    
-    def get_infor_all_user(self):
+
+    def get_info_all_user(self):
         """
         Nút bấm lấy thông tin tài khoản người dùng và hiển thị lên treeview
         """
         # Hiện popup loading
-        # self.show_loading_popup()
         self.loading.show()
-        
 
         # Tạo luồng mới để cập nhật dữ liệu vào CSDL
-        threading.Thread(target=self.get_all_infor_user_in_thread, daemon= True).start()
-    
-    def get_all_infor_user_in_thread(self):
+        threading.Thread(target=self.get_all_info_user_in_thread, daemon= True).start()
+
+    def get_all_info_user_in_thread(self):
         """
         Truy vấn thông tin người dùng trong một luồng riêng
         """
         try:
             # Truy vấn thông tin tất cả người dùng
             results = self.db.get_information_all_user()
-            
+
             # Nếu là False thì sẽ là lỗi trong khi truy vấn
             if results["success"] is False:
                 # Đóng popup và hiển thị messagebox
@@ -300,28 +327,35 @@ class HomePage(customtkinter.CTkFrame):
                 self.loading.schedule_hide()
                 self.after(0, lambda: messagebox.showerror("Lỗi truy vấn", "Không thể truy vấn dữ liệu người dùng từ CSDL."))
                 return
-            
+
             # Đưa dữ liệu vào Queue để xử lý
             self.data_user_queue.put(results["data"])
             # Gọi hàm xử lý giao diện chính
             self.after(0, self.process_data_all_user)
 
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-except
             self.after(0, self.hide_loading_popup)
             self.after(0, lambda err=e: messagebox.showerror("Lỗi truy vấn", f"Xảy ra lỗi: {str(err)}. \nVui lòng thử lại sau."))
-            logger.error(f"Xảy ra lỗi trong lúc truy vấn thông tin người dùng từ CSDL: {e}")
+            logger.error("Xảy ra lỗi trong lúc truy vấn thông tin người dùng từ CSDL: %s", {e})
 
     def process_data_all_user(self):
         """
         Hiển thị dữ liệu từ người dùng lên treeview
         """
-        data = self.data_user_queue.get()
-        
+        # Không dùng get() chờ vô hạn trên luồng giao diện.
+        try:
+            data = self.data_user_queue.get_nowait()
+        except queue.Empty:
+            return
+
+        # Bỏ thông tin lựa chọn cũ trước khi cập nhật danh sách.
+        self.clear_selected_account()
+
         if data:
             # List lưu trữ dữ liệu sau khi đã xử lý
             processed_rows = []
             # Duyệt qua từng hàng dữ liệu
-            for i, row in enumerate(data):
+            for _i, row in enumerate(data):
                 processed_row = []  # Danh sách mới để lưu giá trị đã xử lý cho mỗi hàng
 
                 # Xử lý từng cột giá trị trong 1 hàng dữ liệu
@@ -337,7 +371,7 @@ class HomePage(customtkinter.CTkFrame):
 
                 # Thêm hàng đã xử lý vào danh sách processed_rows
                 processed_rows.append(tuple(processed_row))  # Thêm processed_row dưới dạng tuple vào processed_rows
-        
+
             # Hiển thị dữ liệu lên treeview
             self.insert_data_to_treeview(treeview= self.treeview_account, data= data, column_data= ACCOUNT_TABLE_COLUMN_LIST)
 
@@ -348,7 +382,7 @@ class HomePage(customtkinter.CTkFrame):
             self.change_role_account_button.configure(state="disabled")
             self.link_google_button.configure(state="disabled")
             self.change_password_account_button.configure(state="disabled")
-            
+
             # Đóng popup
             # self.hide_loading_popup()
             self.loading.hide()
@@ -360,13 +394,16 @@ class HomePage(customtkinter.CTkFrame):
             messagebox.showwarning("Không có dữ liệu", "Không tìm thấy dữ liệu về người dùng.")
             
             return
-        
+
     def insert_data_to_treeview(self, treeview: ttk.Treeview, data:list, column_data: list):
         """
         Hiển thị dữ liệu lên treeview tương ứng với dữ liệu thô thu đươc từ CSDL
         """
         # Đặt tiêu đề cột cho Treeview
         treeview["columns"] = column_data  # Cập nhật các cột trong Treeview
+        # Cấu hình Treeview để hiển thị các cột khác ngoài cột đầu tiên (cột #0) và chỉ hiển thị tiêu đề cột
+        treeview.configure( columns=ACCOUNT_TABLE_COLUMN_LIST, displaycolumns=ACCOUNT_DISPLAY_TABLE_COLUMN_LIST, show="headings", selectmode="browse")
+        # Cấu hình từng cột trong Treeview
         for col in column_data:
             treeview.heading(col, text=col)
             treeview.column(col, width=50, anchor="center", stretch=True)  # Cấu hình chiều rộng cột
@@ -376,8 +413,8 @@ class HomePage(customtkinter.CTkFrame):
             treeview.delete(row)
 
         # Chèn dữ liệu từ cơ sở dữ liệu vào Treeview
-        number_data = len(data)
-        for i, row in enumerate(data):
+        # number_data = len(data)
+        for _i, row in enumerate(data):
 
             row_tag = ''  # Mặc định không có tag
             for value in row:
@@ -421,7 +458,7 @@ class HomePage(customtkinter.CTkFrame):
                 logger.info("Đã kích hoạt/ khóa tài khoản: %s thành công", self.username_user_current)
 
                 # Cập nhật lại dữ liệu trên Treeview
-                self.after(0, self.get_infor_all_user)
+                self.after(0, self.get_info_all_user)
             
             else:
                 self.after(0, self.hide_loading_popup)
@@ -433,10 +470,10 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.link_google_button.configure(state="disabled"))
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-except
             self.after(0, self.hide_loading_popup)
             self.after(0, lambda err = e: messagebox.showerror("Lỗi kết nối", f"Không thể kích hoạt/ khóa tài khoản người dùng:{str(err)}.\nThử lại sau."))
-            logger.error(f"Xảy ra lỗi trong lúc kích hoạt/ khóa tài khoản người dùng: {e}") 
+            logger.error("Xảy ra lỗi trong lúc kích hoạt/ khóa tài khoản người dùng: %s", e) 
             # Hủy kích hoạt nút
             self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
             self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
@@ -477,7 +514,7 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.link_google_button.configure(state="disabled"))
                 # Cập nhật lại dữ liệu trên Treeview
-                self.after(0, self.get_infor_all_user)
+                self.after(0, self.get_info_all_user)
             
             else:
                 self.after(0, self.hide_loading_popup)
@@ -490,10 +527,10 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.link_google_button.configure(state="disabled"))
 
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-except
             self.after(0, self.hide_loading_popup)
             self.after(0, lambda err = e: messagebox.showerror("Lỗi kết nối", f"Không thể xóa tài khoản người dùng: {str(err)}.\nVui lòng thử lại sau."))
-            logger.error(f"Xảy ra lỗi trong lúc xóa tài khoản người dùng: {e}") 
+            logger.error("Xảy ra lỗi trong lúc xóa tài khoản người dùng: %s", e) 
             # Hủy kích hoạt nút
             self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
             self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
@@ -510,7 +547,7 @@ class HomePage(customtkinter.CTkFrame):
         result = messagebox.askokcancel("Thay đổi quyền hạn", f"Bạn có chắc chắn muốn thay đổi quyền hạn người dùng: {self.username_user_current}")
 
         if result:
-            privilege = self.optionmenue_privilege_user.get()
+            privilege = self.optionmenu_privilege_user.get()
             logger.info("Sử dụng chức năng thay đổi quyền hạn người dùng: %s", self.username_user_current)
             self.show_loading_popup()
             # Tạo luồng mới để cập nhật dữ liệu vào CSDL
@@ -535,8 +572,8 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.link_google_button.configure(state="disabled"))
                 # Cập nhật lại dữ liệu trên Treeview
-                self.after(0, self.get_infor_all_user)
-            
+                self.after(0, self.get_info_all_user)
+
             else:
                 self.after(0, self.hide_loading_popup)
                 self.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"{result["message"]}.\nVui lòng thử lại sau."))
@@ -548,10 +585,10 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.link_google_button.configure(state="disabled"))
 
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-except
             self.after(0, self.hide_loading_popup)
             self.after(0, lambda err=e: messagebox.showerror("Lỗi kết nối", f"Không thể kích hoạt/ khóa tài khoản người dùng: {str(err)}.\nThử lại sau."))
-            logger.error(f"Xảy ra lỗi trong lúc xóa tài khoản người dùng: {e}") 
+            logger.error("Xảy ra lỗi trong lúc xóa tài khoản người dùng: %s", e) 
             # Hủy kích hoạt nút
             self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
             self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
@@ -580,18 +617,34 @@ class HomePage(customtkinter.CTkFrame):
             if new_password != new_password_again:
                 messagebox.showerror("Lỗi nhập liệu", "Mật khẩu không khớp. Vui lòng nhập lại.")
                 return
+
+            if self.email_user_current is None:
+                messagebox.showerror("Lỗi dữ liệu", "Không thể xác định email của người dùng. Vui lòng thử lại sau.")
+                return
+            email = self.email_user_current
+
+            if not self.user_id_current:
+                messagebox.showwarning("Chưa chọn tài khoản", "Vui lòng chọn một tài khoản trước khi thao tác.",)
+                return
+            # Chụp UserId tại thời điểm bấm nút.
+            target_user_id = self.user_id_current
+
+            if self.auth_version_user_current is None:
+                messagebox.showerror("Lỗi dữ liệu", "Không thể xác định phiên bản xác thực của người dùng. Vui lòng thử lại sau.")
+                return
+            auth_version = int(self.auth_version_user_current)
             
             logger.info("Sử dụng chức năng thay đổi mật khẩu người dùng: %s", self.username_user_current)
             self.show_loading_popup()
             # Tạo luồng mới để cập nhật dữ liệu vào CSDL
-            threading.Thread(target=self.change_password_user_in_thread, args=(new_password,), daemon= True).start()
-    
-    def change_password_user_in_thread(self, new_password):
+            threading.Thread(target=self.change_password_user_in_thread, args=(email, new_password, target_user_id, auth_version), daemon= True).start()
+
+    def change_password_user_in_thread(self, email, new_password, user_id, auth_version):
         """
         Thay đổi mật khẩu người dùng trong 1 luồng riêng
         """
         try:
-            result = self.db.update_password_user(email= self.email_user_current, password= new_password)
+            result = self.db.update_password_user(email= email, password= new_password, user_id = user_id, expected_auth_version= auth_version)
 
             # Nếu kết quả là True thì cập nhật thành công
             if result["success"]:
@@ -606,7 +659,7 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.change_password_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.link_google_button.configure(state="disabled"))
                 # Cập nhật lại dữ liệu trên Treeview
-                self.after(0, self.get_infor_all_user)
+                self.after(0, self.get_info_all_user)
             
             else:
                 self.after(0, self.hide_loading_popup)
@@ -620,11 +673,11 @@ class HomePage(customtkinter.CTkFrame):
                 self.after(0, lambda: self.change_role_account_button.configure(state="disabled"))
                 self.after(0, lambda: self.link_google_button.configure(state="disabled"))
 
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-except
             self.after(0, self.hide_loading_popup)
             self.after(0, lambda err=e: messagebox.showerror("Lỗi kết nối", f"Không thể thay đổi mật khẩu tài khoản người dùng: {str(err)}.\nThử lại sau."))
-            logger.error(f"Xảy ra lỗi trong lúc thay đổi mật khẩu người dùng: {e}") 
-            
+            logger.error("Xảy ra lỗi trong lúc thay đổi mật khẩu người dùng: %s", e)
+
             # Hủy kích hoạt nút
             self.after(0, lambda: self.activate_account_button.configure(state="disabled"))
             self.after(0, lambda: self.disable_account_button.configure(state="disabled"))
@@ -793,21 +846,6 @@ class HomePage(customtkinter.CTkFrame):
 
         # Lấy dữ liệu từ kết quả.
         rows = result.get("data")
-
-        if (
-            not isinstance(rows, (list, tuple))
-            or len(rows) != 1
-            or not isinstance(rows[0], (list, tuple))
-            or len(rows[0]) != 2
-            or rows[0][1] != "google"
-        ):
-            messagebox.showerror(
-                "Liên kết Google",
-                "Procedure trả về kết quả không đúng định dạng.",
-                parent=self.parent,
-            )
-            return
-
         code = rows[0][0]
 
         if code in {"LINKED", "ALREADY_LINKED"}:
@@ -821,28 +859,20 @@ class HomePage(customtkinter.CTkFrame):
 
         messages = {
             "EXTERNAL_ACCOUNT_IN_USE": (
-                "Tài khoản Google này đã liên kết với "
-                "một tài khoản nội bộ khác."
+                "Tài khoản Google này đã liên kết với một tài khoản nội bộ khác."
             ),
             "PROVIDER_ALREADY_LINKED": (
-                "Tài khoản nội bộ của bạn đã liên kết với "
-                "một tài khoản Google khác."
+                "Tài khoản nội bộ của bạn đã liên kết với một tài khoản Google khác."
             ),
             "USER_NOT_FOUND": (
-                "Tài khoản nội bộ không còn tồn tại. "
-                "Hãy đăng nhập lại."
+                "Tài khoản nội bộ không còn tồn tại. Hãy đăng nhập lại."
             ),
             "USER_INACTIVE": (
-                "Tài khoản nội bộ chưa được kích hoạt "
-                "hoặc đã bị khóa."
+                "Tài khoản nội bộ chưa được kích hoạt hoặc đã bị khóa."
             ),
         }
 
-        messagebox.showwarning(
-            "Liên kết Google",
-            messages.get(code, "Không thể liên kết tài khoản. " "Server trả về trạng thái chưa được hỗ trợ."),
-            parent=self.parent,
-        )
+        messagebox.showwarning( "Liên kết Google", messages.get(code, "Không thể liên kết tài khoản.", "Server trả về trạng thái chưa được hỗ trợ."), parent=self.parent, )
 
     def _finish(self):
         # Kết thúc thao tác hiện tại, đặt lại trạng thái.
@@ -895,7 +925,7 @@ class HomePage(customtkinter.CTkFrame):
         # Khóa cửa sổ chính để chỉ có thể tương tác với cửa sổ con
         self.parent.wm_attributes("-disabled", True)  
         self.loading_popup.grab_set()  # Vô hiệu hóa các cửa sổ khác trong khi tải
-    
+
     def hide_loading_popup(self):
         """
         Ẩn popup khi tải xong.
@@ -907,7 +937,6 @@ class HomePage(customtkinter.CTkFrame):
                 self.loading_label.unload()
             # Destroy popup
             self.loading_popup.destroy() 
-
 
 if __name__ == "__main__":
     root = customtkinter.CTk()
