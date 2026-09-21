@@ -36,6 +36,7 @@ import requests # pip install requests
 from gui.login_gui import LoginWindow
 from utils.secure_session_store import SessionStore, StoreError
 from services.auth_adapter import DatabaseAuthAdapter, AuthSession
+from services.database_service import MyDatabase
 from gui.home_window import HomePage
 from gui.database_window import DatabasePage
 
@@ -122,6 +123,9 @@ class App(ctk.CTk):
         # Thiết lập giao diện có hàng 0 và cột thứ 1 tự động co giãn theo kích thước cửa sổ
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
+
+        # Khởi tạo Database để dùng chung cho các frame, tránh tạo nhiều connection không cần thiết
+        self.database_service = MyDatabase()
 
         # Khai báo các button ở mục điều hướng bên trái, khi ấn vào sẽ hiển thị frame tương ứng bên phải
         self.nav_items: Dict[str, NavItem] = {
@@ -521,7 +525,7 @@ class App(ctk.CTk):
             label.pack(expand=True, fill="both", padx=16, pady=16)
             self.frames[nav_name] = placeholder
         else:
-            self.frames[nav_name] = item.frame_class(parent=self)  # DatabasePage(parent=self), v.v
+            self.frames[nav_name] = item.frame_class(parent=self, database_service=self.database_service)  # DatabasePage(parent=self, database_service=self.database_service), v.v
 
     def _update_nav_button_colors(self, active: str):
         """Tô màu nút đang chọn, các nút khác trong suốt."""
@@ -629,7 +633,8 @@ class App(ctk.CTk):
                 software_name=APP_NAME_SYSTEM,
                 auto_login=self._allow_auto_login,
                 session_store=self.session_store,
-                auth_adapter=self.auth_adapter)
+                database_service=self.database_service
+            )
             # LoginWindow có thể đã khởi tạo store khi main chưa khởi tạo được.
             self.session_store = self._login_window.store
             self._allow_auto_login = False
