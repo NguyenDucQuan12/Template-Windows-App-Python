@@ -32,7 +32,7 @@ class HomePage(customtkinter.CTkFrame):
     """
     Tạo giao diện cho trang chủ của phần mềm
     """
-    def __init__(self, parent):
+    def __init__(self, parent, database_service: MyDatabase):
 
         # Truyền vào đối tượng của phần mềm chính
         super().__init__(parent)
@@ -44,7 +44,7 @@ class HomePage(customtkinter.CTkFrame):
 
         # Khởi tạo lớp gửi email và kết nối đến CSDL
         self.email_sender = InternalEmailSender()
-        self.db = MyDatabase() 
+        self.db = database_service
 
         # Khởi tạo hàng đợi (queue) để nhận kết quả từ luồng thực thi khác
         self.data_user_queue= queue.Queue()
@@ -943,7 +943,7 @@ if __name__ == "__main__":
     root.title("Test chức năng")
     root.geometry("1000x600")
 
-    app_frame = HomePage(root)
+    app_frame = HomePage(root, MyDatabase())
     app_frame.pack(fill="both", expand=True)
 
     root.mainloop()

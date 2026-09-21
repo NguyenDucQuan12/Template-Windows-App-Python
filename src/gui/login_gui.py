@@ -22,8 +22,7 @@ from PIL import Image
 from utils.constants import FILE_PATH
 from utils.resource import resource_path
 from utils.secure_session_store import SessionStore, StoreError, scrub_legacy_config
-from services.auth_adapter import (DatabaseAuthAdapter, AuthSession, AuthError,
-    InvalidSession, BackendUnavailable, REMEMBER_DAYS)
+from services.auth_adapter import DatabaseAuthAdapter, AuthSession, AuthError, InvalidSession, BackendUnavailable, REMEMBER_DAYS
 from services.database_service import MyDatabase
 from services.email_service import InternalEmailSender
 from auth.google_auth import GoogleAuthService
@@ -41,8 +40,8 @@ class LoginWindow(ctk.CTkToplevel):
     Giao diện đăng nhập chương trình
     """
     def __init__(self, master, on_success, on_close, software_name="Quan", *,
-                 auto_login=True, session_store=None, auth_adapter=None,
-                 account_service=None, oauth_factories=None):
+                 auto_login=True, session_store=None, account_service=None,
+                 oauth_factories=None, database_service: MyDatabase = None):
 
         super().__init__(master)
         # Khởi tạo các trạng thái
@@ -61,7 +60,8 @@ class LoginWindow(ctk.CTkToplevel):
         self._auto_login_allowed = auto_login                                   # Cho phép tự đăng nhập nếu có lưu trữ thông tin đăng nhập
         self.on_success, self.on_close = on_success, on_close                   # Hàm đăng nhập thành công, thất bại
         self.software_name = software_name                                      # Tên chương trình
-        self.adapter = auth_adapter or DatabaseAuthAdapter()                    # Class lưu phiên đăng nhập
+        self.database = database_service                                        # Dịch vụ cơ sở dữ liệu
+        self.adapter = DatabaseAuthAdapter(database_factory= database_service)  # Class xử lý các thao tác xác thực với backend
         self.account_service = account_service                                  # Nơi quản lý các tài khoản
         self.oauth_factories = oauth_factories or {}                            # Cấu hình thông tin đăng nhập bằng Google hoặc Facebook
         self.store = session_store                                              # Lưu phiên đăng nhập
@@ -93,8 +93,6 @@ class LoginWindow(ctk.CTkToplevel):
         self.password_entry = None
         self.password_confirm_entry = None
 
-        # DB
-        self.database = MyDatabase()
         # Gửi thư tự động
         self.email_sender = InternalEmailSender()
 

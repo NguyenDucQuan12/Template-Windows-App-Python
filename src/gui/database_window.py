@@ -14,11 +14,12 @@ import customtkinter as ctk
 import pyodbc  # pip install pyodbc
 
 # Mở comment 3 dòng bên dưới mỗi khi test (Chạy trực tiếp hàm if __main__)
-import os,sys
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(PROJECT_DIR)
+# import os,sys
+# PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# sys.path.append(PROJECT_DIR)
 
 from services.email_service import InternalEmailSender
+from services.database_service import MyDatabase
 from utils.utils import get_odbc_drivers_for_sql_server
 from utils.app_config import load_config, save_config
 from utils.resource import resource_path
@@ -45,7 +46,7 @@ class DatabasePage(ctk.CTkFrame):
       - Content hiển thị page tương ứng (tạo/lưu page theo lazy-load)
       - State dùng chung giữa các page thông qua self: kết nối, config, danh sách DB...
     """
-    def __init__(self, parent):
+    def __init__(self, parent, database_service: MyDatabase):
         """
         """
         super().__init__(parent)
@@ -62,6 +63,7 @@ class DatabasePage(ctk.CTkFrame):
 
         # Chuỗi kết nối tới CSDL
         self.connection_string: str = None
+        self._db = database_service  # Dùng chung instance MyDatabase để tránh tạo nhiều connection không cần thiết
 
         # Lưu thông tin kết nối (driver, server, auth_mode, username)
         self.conn_config: Dict[str, Any] = {}
@@ -249,6 +251,6 @@ if __name__ == "__main__":
     root = ctk.CTk()
     root.geometry("1200x720")
     root.title("DatabasePage — Demo")
-    page = DatabasePage(root)
+    page = DatabasePage(root, database_service=MyDatabase())
     page.pack(fill="both", expand=True)
     root.mainloop()

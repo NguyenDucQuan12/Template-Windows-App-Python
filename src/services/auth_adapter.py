@@ -118,7 +118,7 @@ class DatabaseAuthAdapter:
     """
     Lớp xác thực đăng nhập
     """
-    def __init__(self, database_factory=None, verifier=None):
+    def __init__(self, database_factory: MyDatabase | None = None, verifier=None):
         """
         Khởi tạo DB
         """
@@ -130,14 +130,9 @@ class DatabaseAuthAdapter:
         """
         Tạo DB và chuẩn hóa lỗi
         """
-        if self.database_factory is None:
-            factory = MyDatabase
-        else:
-            factory = self.database_factory
-
         db = None
         try:
-            db = factory()  # Kết nối được tạo và sử dụng trong cùng worker.
+            db = self.database_factory  # Kết nối được tạo và sử dụng trong cùng worker.
             yield db
         except AuthError:
             raise
