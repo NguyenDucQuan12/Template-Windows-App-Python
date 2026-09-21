@@ -20,6 +20,7 @@ def get_odbc_drivers_for_sql_server():
 
 def get_screen_dpi(base_font_size=10, base_row_height=28):
     """
+    Lấy DPI của màn hình chính và tính toán font size và row height phù hợp.
     Trả về font size và row height phù hợp với DPI hệ thống Windows.
 
     Trên Windows, DPI được đọc từ màn hình chính. Nếu API không khả dụng
