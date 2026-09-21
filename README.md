@@ -2070,6 +2070,29 @@ Trong đó:
 ## 3.3 Tạo class hiển thị giao diện  
 
 Để tạo giao diện cho navigation, khi người dùng nhấn vào nút thì ta sẽ tạo tệp tương ứng ở thư mục [gui](src/gui/).  
+Mỗi một class giao diện thì yêu cầu sử dụng cấu trúc như sau:  
+```python
+from services.database_service import MyDatabase
+
+# Tên class Page hiển thị lên giao diện chương trình bắt buộc phải kế thừa class customtkinter.CTkFrame
+class HomePage(customtkinter.CTkFrame):
+    """
+    Tạo giao diện cho trang chủ của phần mềm
+    """
+    def __init__(self, parent, database_service: MyDatabase):
+        """
+        parent là frame cha
+        database_service là kết nối chung 
+        """
+        # Khởi tạo DB chung
+        self.db = database_service
+```
+Vì ta sử dụng `semaphore` để giới hạn số connection, nên chỉ cần `một instance MyDatabase duy nhất` cho toàn bộ app.  
+Nếu tạo nhiều instance MyDatabase thì sẽ tạo nhiều semaphore độc lập và tổng giới hạn sẽ tăng theo, dẫn đến việc vượt quá số connection tối đa của SQL Server.  
+Ví dụ: nếu `MyDatabase` có giới hạn `4 connection`, thì tạo 3 instance MyDatabase sẽ cho phép tối đa `12 connection` cùng lúc, vượt quá giới hạn của SQL Server.  
+
+> Vì vậy chỉ khởi tạo 1 instance MyDatabase tại tệp main.py và truyền nó vào các giao diện khác  
+
 Tại đây ta tạo tệp tương ứng với `database navigation` sẽ có tên là [database_window](src/gui/database_window.py). Class trong tệp này kế thừa thuộc tính là `CtkFrame` từ `Customtkinter`.  
 
 Tùy theo giao diện mà ta sẽ tạo nó tương ứng với nhu cầu, tuy nhiên cần đúng định dạng là 1 Frame. Có thể tham khảo tại thư mục `gui` các giao diện trước đó.  
