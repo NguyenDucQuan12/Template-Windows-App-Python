@@ -19,6 +19,7 @@ import pyodbc
 # sys.path.append(PROJECT_DIR)
 from services.hash import Hash
 from utils.utils import get_odbc_drivers_for_sql_server
+from utils.db_concurrency import DatabaseConcurrencyMixin, DatabaseCapacityTimeout, DatabaseReentrantCall
 
 
 # Bật cơ chế tái sử dụng kết nối của ODBC.
@@ -217,16 +218,19 @@ def _error(code, message):
     return {'success': False, 'code': code, 'message': message, 'data': [],
             'columns': [], 'records': [], 'result_sets': []}
 
-class MyDatabase:
+class MyDatabase(DatabaseConcurrencyMixin):
     """
-    Lớp quản lý kết nối đến cơ sở dữ liệu SQL Server.
+    Lớp quản lý kết nối đến cơ sở dữ liệu SQL Server.  
+    Kế thừa DatabaseConcurrencyMixin để quản lý đồng thời nhiều thread, tránh quá tải kết nối.
     """
     def __init__(self, server_name='localhost', database_name="DucQuanApp", user_name="ducquan_user", password="123456789",
-                 *, connect_timeout=5, query_timeout=15, trust_server_certificate=True):
+                 *, connect_timeout=5, query_timeout=15, trust_server_certificate=True, max_concurrent_connections=4, acquire_timeout=10):
         """
         Khởi tạo kết nối đến cơ sở dữ liệu SQL Server.
         """
-        # Các tham số kết nối tới SQL Server, có thể lấy từ biến môi trường nếu không truyền trực tiếp.
+        # Khởi tạo concurrency để giới hạn số kết nối đồng thời, tránh quá tải SQL Server.
+        # Nếu không có slot trong acquire_timeout giây, raise DatabaseCapacityTimeout.
+        self._init_concurrency(max_concurrent_connections, acquire_timeout)
         self.database_name = database_name
         self._connect_timeout = _positive(connect_timeout, 'Connect timeout')
         self._query_timeout = _positive(query_timeout, 'Query timeout')
@@ -253,6 +257,7 @@ class MyDatabase:
             f'SERVER={_odbc_value(server_name)};'
             f'DATABASE={_odbc_value(database_name)};'
             f'{auth}Encrypt=yes;'
+            f'APP=DucQuanApp.Benchmark;' # Tên ứng dụng để SQL Server log trace hoặc khi benchmark, có thể dùng 'APP=DucQuanApp.Benchmark;'
             f'TrustServerCertificate={"yes" if trust_server_certificate else "no"};'
         )
 
@@ -281,38 +286,39 @@ class MyDatabase:
             except Exception as e: # pylint: disable=broad-except
                 logger.error('Lỗi khi đóng tài nguyên (cursor): %s', str(e))
 
-    @contextmanager
-    def _cursor(self, *, transactional=False):
-        """
-        Cung cấp một cursor để thực hiện các truy vấn SQL. Nếu transactional=True, sẽ bắt đầu một transaction và commit/rollback khi kết thúc.
-        """
-        conn = cursor = None
-        try:
-            # Tạo kết nối đến cơ sở dữ liệu với autocommit=False nếu transactional=True, ngược lại autocommit=True.
-            conn = self._connect(autocommit=not transactional)
-            cursor = conn.cursor()
+    # @contextmanager
+    # def _cursor(self, *, transactional=False):
+    #     """
+    #     Cung cấp một cursor để thực hiện các truy vấn SQL. Nếu transactional=True, sẽ bắt đầu một transaction và commit/rollback khi kết thúc.  
+    #     Nếu sử dụng _cursor của semaphore thì tạm ẩn hàm này. 
+    #     """
+    #     conn = cursor = None
+    #     try:
+    #         # Tạo kết nối đến cơ sở dữ liệu với autocommit=False nếu transactional=True, ngược lại autocommit=True.
+    #         conn = self._connect(autocommit=not transactional)
+    #         cursor = conn.cursor()
 
-            # Nếu là transactional, bật XACT_ABORT và NOCOUNT để đảm bảo transaction được rollback khi có lỗi.
-            # Sau đó bắt đầu transaction nếu chưa có transaction nào đang mở ở connection này.
-            if transactional:
-                cursor.execute('SET XACT_ABORT ON; SET NOCOUNT ON; IF @@TRANCOUNT=0 BEGIN TRANSACTION;')
-            yield cursor
+    #         # Nếu là transactional, bật XACT_ABORT và NOCOUNT để đảm bảo transaction được rollback khi có lỗi.
+    #         # Sau đó bắt đầu transaction nếu chưa có transaction nào đang mở ở connection này.
+    #         if transactional:
+    #             cursor.execute('SET XACT_ABORT ON; SET NOCOUNT ON; IF @@TRANCOUNT=0 BEGIN TRANSACTION;')
+    #         yield cursor
 
-            # Nếu là transactional, commit transaction khi không có lỗi.
-            if transactional:
-                conn.commit()
-        except Exception as e: # pylint: disable=broad-except
-            logger.error('Lỗi khi thực hiện transaction: %s', str(e))
-            if conn is not None and transactional:
-                try:
-                    conn.rollback()
-                except Exception as exc: # pylint: disable=broad-except
-                    logger.error('Lỗi khi rollback transaction: %s', str(exc))
-            raise
+    #         # Nếu là transactional, commit transaction khi không có lỗi.
+    #         if transactional:
+    #             conn.commit()
+    #     except Exception as e: # pylint: disable=broad-except
+    #         logger.error('Lỗi khi thực hiện transaction: %s', str(e))
+    #         if conn is not None and transactional:
+    #             try:
+    #                 conn.rollback()
+    #             except Exception as exc: # pylint: disable=broad-except
+    #                 logger.error('Lỗi khi rollback transaction: %s', str(exc))
+    #         raise
 
-        finally:
-            self._close(cursor)
-            self._close(conn)
+    #     finally:
+    #         self._close(cursor)
+    #         self._close(conn)
 
     def _transaction(self):
         """Chỉ dành cho SQL phụ. TUYỆT ĐỐI không gọi usp_User_* bên trong."""
@@ -360,6 +366,12 @@ class MyDatabase:
         Nếu exc là Exception khác, trả về lỗi DATABASE_ERROR.
         """
         # Không log str(exc): ODBC có thể chứa SQL, PII hoặc tham số nhạy cảm.
+        if isinstance(exc, DatabaseCapacityTimeout):
+            return _error('CAPACITY_TIMEOUT', 'Hết thời gian chờ lượt truy cập database.')
+        if isinstance(exc, DatabaseReentrantCall):
+            return _error('REENTRANT_CALL', 'Không được mở connection lồng nhau.')
+
+        # Không log str(exc): ODBC có thể chứa SQL, PII hoặc tham số nhạy cảm.
         error_id = uuid.uuid4().hex[:12]
         native = None
 
@@ -377,11 +389,18 @@ class MyDatabase:
         result['error_id'] = error_id
         return result
 
-    def _execute_query(self, query, params=None, *, transactional=True):
+    def _execute_query(self, query, params=None, *, transactional=True, metric=False):
         """
         Thực thi một truy vấn SQL với các tham số đã cho. Trả về dict kết quả chuẩn.  
         Nếu transactional=True, sẽ thực hiện trong transaction và rollback khi có lỗi.
+        Nếu metric=True, đo và in thời gian semaphore, kết nối, thực thi và dọn dẹp.
         """
+        if type(metric) is not bool:
+            raise TypeError('metric phải là bool')
+
+        if metric:
+            self.begin_db_measurement()
+
         try:
             with self._cursor(transactional=transactional) as cursor:
                 cursor.execute(query, tuple(params or ()))
@@ -392,6 +411,17 @@ class MyDatabase:
         except Exception as exc: # pylint: disable=broad-except
             logger.error('Lỗi khi thực thi truy vấn SQL: %s', str(exc))
             return self._failure(exc)
+        finally:
+            if metric:
+                # Kết thúc gom metric trong mọi trường hợp, kể cả query lỗi.
+                spans = self.end_db_measurement()
+                # Một operation có thể mở nhiều cursor nên có thể có nhiều span.
+                for span in spans:
+                    print(query)
+                    print("Chờ semaphore:", span["wait_ms"], "ms")
+                    print("Kết nối:", span["connect_ms"], "ms")
+                    print("Thực thi:", span["work_ms"], "ms")
+                    print("Dọn dẹp:", span["cleanup_ms"], "ms")
 
     def _call(self, action, *values):
         """
@@ -1273,5 +1303,7 @@ class MyDatabase:
             return self._failure(exc)
 
 if __name__ == '__main__':
-    driver_SQL = get_odbc_drivers_for_sql_server()  # Kiểm tra driver ODBC SQL Server có sẵn.
-    print('ODBC drivers for SQL Server:', driver_SQL)
+    # Chạy một số kiểm tra cơ bản để xác minh chức năng của DatabaseService.
+    service = MyDatabase()
+    # Thử đăng nhập cục bộ với email và mật khẩu giả định.
+    login_result = service.login_local('test@example.com', 'password123')
